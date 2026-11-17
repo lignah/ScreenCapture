@@ -2,6 +2,16 @@ namespace ScreenCapture;
 
 internal static class Program
 {
+    /// <summary>Product version (csproj &lt;Version&gt;, set from the git tag in release builds), e.g. "1.0.0".</summary>
+    public static string AppVersion
+    {
+        get
+        {
+            var v = typeof(Program).Assembly.GetName().Version;
+            return v == null ? "" : $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -31,6 +41,20 @@ internal static class Program
                     sb.AppendLine($"{name} {n}: loaded {icon.Width}x{icon.Height}");
                 }
             Emit(sb, null, 0);
+            return 0;
+        }
+        if (args.Contains("--log-test"))
+        {
+            // Writes one test entry through ErrorLog (exercises the ~1 MB rotation).
+            ErrorLog.Write(new Exception("log test"));
+            return 0;
+        }
+        if (args.Contains("--startup-refresh-test"))
+        {
+            // Runs the launch-time start-with-Windows path refresh and prints the resulting Run value.
+            AppSettings.RefreshStartupPath();
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+            Emit(new System.Text.StringBuilder($"Run value: {key?.GetValue("ScreenCapture") ?? "(not set)"}{Environment.NewLine}exe: {Environment.ProcessPath}{Environment.NewLine}"), null, 0);
             return 0;
         }
         if (args.Contains("--settings-test"))

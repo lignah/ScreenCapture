@@ -16,7 +16,7 @@ internal sealed class SettingsForm : Form
         SuspendLayout();
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
-        Text = "Screen Capture Settings";
+        Text = $"Screen Capture {Program.AppVersion} Settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

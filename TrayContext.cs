@@ -85,7 +85,8 @@ internal sealed class TrayContext : ApplicationContext
         {
             if (id == HotkeyId) StartRegionCapture();
         };
-        RegisterHotkey(notifySuccess: !startCapture);
+        RegisterHotkey();
+        try { AppSettings.RefreshStartupPath(); } catch (Exception ex) { ErrorLog.Write(ex); }
 
         if (startCapture) RunLater(100, StartRegionCapture);
     }
@@ -94,7 +95,7 @@ internal sealed class TrayContext : ApplicationContext
         ? $"Current hotkey {_hotkeyText} is active (region capture)."
         : $"Current hotkey {_hotkeyText} could not be registered (in use by another app?). Pick another one above.";
 
-    private void RegisterHotkey(bool notifySuccess)
+    private void RegisterHotkey()
     {
         if (_hotkeyOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);
         _hotkeyOk = false;
@@ -105,14 +106,12 @@ internal sealed class TrayContext : ApplicationContext
         if (_hotkeyOk)
         {
             _regionItem.ShortcutKeyDisplayString = _hotkeyText;
-            _tray.Text = Truncate($"Screen Capture ({_hotkeyText})");
-            if (notifySuccess)
-                _tray.ShowBalloonTip(2500, "Screen Capture", $"Running in the tray. Press {_hotkeyText} to capture.", ToolTipIcon.Info);
+            _tray.Text = Truncate($"Screen Capture {Program.AppVersion} ({_hotkeyText})");
         }
         else
         {
             _regionItem.ShortcutKeyDisplayString = "hotkey unavailable";
-            _tray.Text = "Screen Capture (hotkey unavailable)";
+            _tray.Text = Truncate($"Screen Capture {Program.AppVersion} (hotkey unavailable)");
             _tray.ShowBalloonTip(6000, "Screen Capture",
                 $"{_hotkeyText} is already used by another app. Choose another hotkey in Settings, or click the tray icon to capture.",
                 ToolTipIcon.Warning);
@@ -301,7 +300,7 @@ internal sealed class TrayContext : ApplicationContext
         _settingsForm = form;
         try
         {
-            if (form.ShowDialog() == DialogResult.OK) RegisterHotkey(notifySuccess: true);
+            if (form.ShowDialog() == DialogResult.OK) RegisterHotkey();
         }
         finally { _settingsForm = null; }
     }

@@ -76,6 +76,15 @@ internal sealed class AppSettings
         }
     }
 
+    /// <summary>If start-with-Windows is on but points at another exe path (app moved/updated), point it here.</summary>
+    public static void RefreshStartupPath()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+        if (key?.GetValue(RunValue) is not string current) return;
+        string wanted = $"\"{Environment.ProcessPath}\"";
+        if (!string.Equals(current, wanted, StringComparison.OrdinalIgnoreCase)) key.SetValue(RunValue, wanted);
+    }
+
     public static bool StartWithWindows
     {
         get
