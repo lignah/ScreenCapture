@@ -211,15 +211,8 @@ internal sealed class TrayContext : ApplicationContext
         try
         {
             var r = await OcrRunner.RunAsync(img, _settings);
-            if (r.Error != null && !r.Copied && r.Outcome == null)
-                _tray.ShowBalloonTip(3000, "OCR 실패", r.Error, ToolTipIcon.Error);
-            else if (r.Lines == 0)
-                _tray.ShowBalloonTip(2000, "Screen Capture", "텍스트를 찾지 못했어요", ToolTipIcon.Info);
-            else if (r.Copied)
-                _tray.ShowBalloonTip(2000, $"OCR 복사됨 · {r.Lines}줄", r.Preview(), ToolTipIcon.None);
-            else
-                _tray.ShowBalloonTip(3000, "OCR 복사 실패", r.Error ?? "", ToolTipIcon.Warning);
-
+            // Silent by design: no notification after OCR. Failures are already written to error.log
+            // (OcrRunner logs exceptions, ClipboardText logs clipboard errors).
             if (_settings.OcrShowWindow && r.Outcome != null)
             {
                 new OcrResultForm(img, near, _settings, r.Outcome, r.Copied).Show();

@@ -879,6 +879,23 @@ internal sealed class OverlayForm : Form
         return Render();
     }
 
+    /// <summary>Headless magnifier check used by --magnifier-selftest: paints the idle overlay with the cursor at
+    /// <paramref name="at"/> (client coords) and returns the magnifier area plus the expected #RRGGBB text.</summary>
+    internal Bitmap MagnifierSelfTest(Point at, out string hex)
+    {
+        _mode = Mode.Idle;
+        _mouse = at;
+        _hover = null;
+        var cr = ClientR;
+        using var full = new Bitmap(cr.Width, cr.Height);
+        using (var g = Graphics.FromImage(full))
+            OnPaint(new PaintEventArgs(g, cr));
+        var m = Clamp(_mouse);
+        hex = HexColor(_src.GetPixel(m.X, m.Y));
+        var r = Rectangle.Intersect(MagnifierRect(), cr);
+        return full.Clone(r, full.PixelFormat);
+    }
+
     // ---------------------------------------------------------------- toolbar
 
     private void LayoutToolbar()
@@ -895,7 +912,7 @@ internal sealed class OverlayForm : Form
             ("pen", "Pen", false), ("text", "Text", false), ("mosaic", "Mosaic / blur", false),
             null, ("undo", "Undo (Ctrl+Z)", false), null,
         };
-        for (int i = 0; i < Palette.Length; i++) items.Add(($"col{i}", PaletteNames[i], true));
+        for (int i = 0; i < Palette.Length; i++) items.Add(($"col{i}", $"{PaletteNames[i]} {HexColor(Palette[i])}", true));
         items.Add(null);
         string[] thickNames = { "Thin", "Medium", "Thick" };
         for (int i = 0; i < Thickness.Length; i++) items.Add(($"th{i}", thickNames[i] + " (also text size / mosaic block)", true));
@@ -1209,8 +1226,11 @@ internal sealed class OverlayForm : Form
         float sw = 10 * s;
         using (var sb = new SolidBrush(px)) g.FillRectangle(sb, tx, ty + 18 * s, sw, sw);
         g.DrawRectangle(Pens.Gray, tx, ty + 18 * s, sw, sw);
-        g.DrawString($"RGB {px.R},{px.G},{px.B}", f, Brushes.White, tx + sw + 4 * s, ty + 16 * s);
+        g.DrawString(HexColor(px), f, Brushes.White, tx + sw + 4 * s, ty + 16 * s);
     }
+
+    /// <summary>Color as uppercase #RRGGBB (alpha ignored).</summary>
+    internal static string HexColor(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
 
     private static void DrawCentered(Graphics g, string text, Font f, Color c, Rectangle r)
     {

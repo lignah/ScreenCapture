@@ -19,6 +19,8 @@ internal static class Program
         if (o >= 0) return RunOcrTest(args, o);
         int i = Array.IndexOf(args, "--fullscreen-test");
         if (i >= 0) return RunTest(args, i, overlay: false);
+        i = Array.IndexOf(args, "--magnifier-selftest");
+        if (i >= 0) return RunMagnifierTest(args, i);
         i = Array.IndexOf(args, "--overlay-selftest");
         if (i >= 0) return RunTest(args, i, overlay: true);
 
@@ -138,7 +140,7 @@ internal static class Program
             string clip = Clipboard.ContainsText() ? Clipboard.GetText() : "";
             bool ok = r != null && r.Copied && clip == r.Text && OcrRunner.LastCopyApartment == ApartmentState.STA;
             sb.AppendLine($"ocr: {r?.ElapsedMs} ms, {r?.Outcome?.LanguageTag}, lines={r?.Lines}, copied={r?.Copied}, copy thread={OcrRunner.LastCopyApartment}" + (r?.Error != null ? ", error " + r.Error : "") + (r?.Outcome?.Note != null ? ", note " + r.Outcome.Note : ""));
-            sb.AppendLine($"notification: OCR 복사됨 · {r?.Lines}줄 | {r?.Preview()}");
+            sb.AppendLine("notification: none (silent copy)");
             sb.AppendLine("auto-copy check: " + (ok ? "PASS (clipboard == OCR text)" : "FAIL"));
             if (!ok) code = 1;
             sb.AppendLine("----- clipboard -----");
@@ -291,6 +293,27 @@ internal static class Program
         }
         catch { }
         return 0;
+    }
+
+    /// <summary>--magnifier-selftest &lt;png&gt;: renders the magnifier over the current screen at (200,200) and writes
+    /// the crop plus &lt;png&gt;.info.txt with the #RRGGBB shown.</summary>
+    private static int RunMagnifierTest(string[] args, int index)
+    {
+        string path = Path.GetFullPath(args[index + 1]);
+        try
+        {
+            var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
+            using var form = new OverlayForm(bmp, vb, new List<Rectangle>(), new AppSettings());
+            using var crop = form.MagnifierSelfTest(new Point(200, 200), out var hex);
+            ImageOutput.Save(crop, path);
+            File.WriteAllText(path + ".info.txt", $"ok color={hex} format={(System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-F]{6}$") ? "PASS" : "FAIL")}{Environment.NewLine}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            try { File.WriteAllText(path + ".error.txt", ex.ToString()); } catch { }
+            return 1;
+        }
     }
 
     private static int RunTest(string[] args, int index, bool overlay)
