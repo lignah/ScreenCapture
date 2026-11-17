@@ -59,7 +59,7 @@
 
 ## 빌드
 
-.NET 8 SDK가 필요함. OCR 모델은 레포에 없어서 먼저 받아야됨 (주소 고정, SHA-256 검증)
+.NET 8 SDK가 필요함. 첫 줄은 OCR 모델 받기, 둘째 줄은 빌드
 
 `powershell`
 ```powershell
@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File tools\get-models.ps1
 dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-결과물은 `publish\ScreenCapture.exe`와 `publish\models\`. `v*` 태그를 푸시하면 GitHub Actions가 같은 방법으로 빌드해서 zip을 릴리스에 올림
+`publish` 폴더에 `ScreenCapture.exe`와 `models`가 생기고, 그 `ScreenCapture.exe`를 실행하면 됨
 
 ## 설정, 라이선스
 
