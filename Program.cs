@@ -322,11 +322,9 @@ internal static class Program
                     bool ctrlOk = Clipboard.GetText() == sentinel;
                     bool handled = form.SimulateKey(Keys.C);
                     string clip = Clipboard.GetText();
-                    bool cOk = handled && clip == hex && !form.IsDisposed;
+                    bool cOk = handled && clip == hex && form.IsDisposed;
                     info.AppendLine($"ctrl+c leaves clipboard alone: {(ctrlOk ? "PASS" : "FAIL")}");
-                    info.AppendLine($"plain C copies color: {(cOk ? "PASS" : "FAIL")} clipboard={clip} overlayOpen={!form.IsDisposed}");
-                    using var after = form.MagnifierSelfTest(at, out _);
-                    ImageOutput.Save(after, Path.ChangeExtension(path, null) + "_copied.png");
+                    info.AppendLine($"plain C copies color and closes overlay: {(cOk ? "PASS" : "FAIL")} clipboard={clip} overlayClosed={form.IsDisposed}");
                 }
                 finally
                 {
