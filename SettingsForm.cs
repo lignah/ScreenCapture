@@ -7,6 +7,7 @@ internal sealed class SettingsForm : Form
     private readonly CheckBox _ask = new() { Text = "Ask where to save (Save As dialog)", AutoSize = true };
     private readonly CheckBox _saveOnCopy = new() { Text = "Also save a PNG to the folder when copying", AutoSize = true };
     private readonly CheckBox _fullSave = new() { Text = "Full-screen capture also saves a PNG (it always copies)", AutoSize = true };
+    private readonly ComboBox _hotkey = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 200, Anchor = AnchorStyles.Left };
     private readonly CheckBox _startup = new() { Text = "Start with Windows", AutoSize = true };
 
     public SettingsForm(AppSettings settings, string hotkeyStatus)
@@ -48,7 +49,11 @@ internal sealed class SettingsForm : Form
         table.Controls.Add(_folder, 1, 0);
         table.Controls.Add(browse, 2, 0);
 
-        int row = 1;
+        _hotkey.Items.AddRange(HotkeyParser.Presets);
+        table.Controls.Add(new Label { Text = "Capture hotkey:", AutoSize = true, Anchor = AnchorStyles.Left }, 0, 1);
+        table.Controls.Add(_hotkey, 1, 1);
+
+        int row = 2;
         foreach (var cb in new[] { _ask, _saveOnCopy, _fullSave, _startup })
         {
             table.Controls.Add(cb, 0, row);
@@ -74,12 +79,23 @@ internal sealed class SettingsForm : Form
         CancelButton = cancel;
 
         _folder.Text = settings.EffectiveFolder;
+        _hotkey.Text = settings.Hotkey;
         _ask.Checked = settings.AskWhereToSave;
         _saveOnCopy.Checked = settings.SaveOnCopy;
         _fullSave.Checked = settings.FullScreenSavesFile;
         try { _startup.Checked = AppSettings.StartWithWindows; } catch { _startup.Enabled = false; }
 
-        ok.Click += (_, _) => Apply();
+        ok.Click += (_, _) =>
+        {
+            if (!HotkeyParser.TryParse(_hotkey.Text, out _, out _))
+            {
+                MessageBox.Show(this, "Hotkey must look like Ctrl+Shift+A (modifiers: Ctrl, Alt, Shift, Win).",
+                    "Screen Capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                DialogResult = DialogResult.None;
+                return;
+            }
+            Apply();
+        };
         ResumeLayout(false);
         PerformLayout();
     }
@@ -87,6 +103,7 @@ internal sealed class SettingsForm : Form
     private void Apply()
     {
         _settings.SaveFolder = _folder.Text.Trim();
+        _settings.Hotkey = _hotkey.Text.Trim();
         _settings.AskWhereToSave = _ask.Checked;
         _settings.SaveOnCopy = _saveOnCopy.Checked;
         _settings.FullScreenSavesFile = _fullSave.Checked;

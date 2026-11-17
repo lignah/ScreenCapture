@@ -5,14 +5,15 @@ namespace ScreenCapture;
 internal sealed class TrayContext : ApplicationContext
 {
     private const int HotkeyId = 0xA11;
-    private const string HotkeyText = "Ctrl+Shift+A";
 
     private static Icon? _appIcon;
 
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly NotifyIcon _tray;
     private readonly HotkeyWindow _hotkeyWindow = new();
-    private readonly bool _hotkeyOk;
+    private readonly ToolStripMenuItem _regionItem;
+    private bool _hotkeyOk;
+    private string _hotkeyText = HotkeyParser.Default;
     private OverlayForm? _overlay;
     private SettingsForm? _settingsForm;
     private string? _lastSavedPath;
@@ -38,12 +39,11 @@ internal sealed class TrayContext : ApplicationContext
     public TrayContext(bool startCapture)
     {
         var menu = new ContextMenuStrip();
-        var region = new ToolStripMenuItem("Region capture", null, (_, _) => RunLater(180, StartRegionCapture))
+        _regionItem = new ToolStripMenuItem("Region capture", null, (_, _) => RunLater(180, StartRegionCapture))
         {
-            ShortcutKeyDisplayString = HotkeyText,
             Font = new Font(menu.Font, FontStyle.Bold),
         };
-        menu.Items.Add(region);
+        menu.Items.Add(_regionItem);
         menu.Items.Add("Full screen capture", null, (_, _) => RunLater(250, FullScreenCapture));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open screenshots folder", null, (_, _) => OpenFolder());
@@ -68,29 +68,41 @@ internal sealed class TrayContext : ApplicationContext
         {
             if (id == HotkeyId) StartRegionCapture();
         };
-        _hotkeyOk = Native.RegisterHotKey(_hotkeyWindow.Handle, HotkeyId,
-            Native.MOD_CONTROL | Native.MOD_SHIFT | Native.MOD_NOREPEAT, (uint)Keys.A);
-
-        if (_hotkeyOk)
-        {
-            _tray.Text = $"Screen Capture ({HotkeyText})";
-            if (!startCapture)
-                _tray.ShowBalloonTip(2500, "Screen Capture", $"Running in the tray. Press {HotkeyText} to capture.", ToolTipIcon.Info);
-        }
-        else
-        {
-            _tray.Text = "Screen Capture (hotkey unavailable)";
-            region.ShortcutKeyDisplayString = "hotkey in use";
-            _tray.ShowBalloonTip(6000, "Screen Capture",
-                $"{HotkeyText} is already used by another app. Click the tray icon to capture instead.", ToolTipIcon.Warning);
-        }
+        RegisterHotkey(notifySuccess: !startCapture);
 
         if (startCapture) RunLater(100, StartRegionCapture);
     }
 
     private string HotkeyStatus => _hotkeyOk
-        ? $"Hotkey: {HotkeyText} (region capture)"
-        : $"Hotkey: {HotkeyText} could not be registered (in use by another app). Use the tray icon.";
+        ? $"Current hotkey {_hotkeyText} is active (region capture)."
+        : $"Current hotkey {_hotkeyText} could not be registered (in use by another app?). Pick another one above.";
+
+    private void RegisterHotkey(bool notifySuccess)
+    {
+        if (_hotkeyOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);
+        _hotkeyOk = false;
+        _hotkeyText = string.IsNullOrWhiteSpace(_settings.Hotkey) ? HotkeyParser.Default : _settings.Hotkey.Trim();
+        if (HotkeyParser.TryParse(_hotkeyText, out uint mods, out Keys key))
+            _hotkeyOk = Native.RegisterHotKey(_hotkeyWindow.Handle, HotkeyId, mods | Native.MOD_NOREPEAT, (uint)key);
+
+        if (_hotkeyOk)
+        {
+            _regionItem.ShortcutKeyDisplayString = _hotkeyText;
+            _tray.Text = Truncate($"Screen Capture ({_hotkeyText})");
+            if (notifySuccess)
+                _tray.ShowBalloonTip(2500, "Screen Capture", $"Running in the tray. Press {_hotkeyText} to capture.", ToolTipIcon.Info);
+        }
+        else
+        {
+            _regionItem.ShortcutKeyDisplayString = "hotkey unavailable";
+            _tray.Text = "Screen Capture (hotkey unavailable)";
+            _tray.ShowBalloonTip(6000, "Screen Capture",
+                $"{_hotkeyText} is already used by another app. Choose another hotkey in Settings, or click the tray icon to capture.",
+                ToolTipIcon.Warning);
+        }
+    }
+
+    private static string Truncate(string s) => s.Length <= 63 ? s : s[..63];
 
     private static void RunLater(int ms, Action action)
     {
@@ -192,7 +204,10 @@ internal sealed class TrayContext : ApplicationContext
         }
         using var form = new SettingsForm(_settings, HotkeyStatus);
         _settingsForm = form;
-        try { form.ShowDialog(); }
+        try
+        {
+            if (form.ShowDialog() == DialogResult.OK) RegisterHotkey(notifySuccess: true);
+        }
         finally { _settingsForm = null; }
     }
 

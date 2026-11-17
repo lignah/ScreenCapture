@@ -11,6 +11,9 @@ internal sealed class AppSettings
 
     public string SaveFolder { get; set; } = ImageOutput.DefaultFolder;
 
+    /// <summary>Global hotkey for region capture, e.g. "Ctrl+Shift+A".</summary>
+    public string Hotkey { get; set; } = HotkeyParser.Default;
+
     /// <summary>Show a Save As dialog; otherwise save straight to <see cref="SaveFolder"/>.</summary>
     public bool AskWhereToSave { get; set; } = true;
 

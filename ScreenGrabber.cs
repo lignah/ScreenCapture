@@ -18,7 +18,7 @@ internal static class ScreenGrabber
         var bmp = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppPArgb);
         using var g = Graphics.FromImage(bmp);
         g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size,
-            CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+            CopyPixelOperation.SourceCopy);
         return bmp;
     }
 
