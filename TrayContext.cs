@@ -44,6 +44,7 @@ internal sealed class TrayContext : ApplicationContext
             Font = new Font(menu.Font, FontStyle.Bold),
         };
         menu.Items.Add(_regionItem);
+        menu.Items.Add("OCR capture (extract text)", null, (_, _) => RunLater(180, () => StartRegionCapture(ocrMode: true)));
         menu.Items.Add("Full screen capture", null, (_, _) => RunLater(250, FullScreenCapture));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Open screenshots folder", null, (_, _) => OpenFolder());
@@ -116,7 +117,9 @@ internal sealed class TrayContext : ApplicationContext
         t.Start();
     }
 
-    private void StartRegionCapture()
+    private void StartRegionCapture() => StartRegionCapture(ocrMode: false);
+
+    private void StartRegionCapture(bool ocrMode)
     {
         if (_overlay != null)
         {
@@ -127,7 +130,8 @@ internal sealed class TrayContext : ApplicationContext
         {
             var windows = ScreenGrabber.GetWindowRects();
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
-            var overlay = new OverlayForm(bmp, vb, windows, _settings);
+            var overlay = new OverlayForm(bmp, vb, windows, _settings) { OcrMode = ocrMode };
+            overlay.OcrRequested += (img, near) => new OcrResultForm(img, near).Show();
             overlay.PinRequested += (img, loc) =>
             {
                 var pin = new PinForm(img, loc, _settings);

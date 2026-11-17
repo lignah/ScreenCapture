@@ -57,6 +57,12 @@ internal sealed class OverlayForm : Form
     /// <summary>Raised with the rendered image and its screen position. Receiver owns the bitmap.</summary>
     public event Action<Bitmap, Point>? PinRequested;
 
+    /// <summary>Raised with the raw (unannotated) selection and a screen point to place the result near.</summary>
+    public event Action<Bitmap, Point>? OcrRequested;
+
+    /// <summary>When true, finishing a selection immediately runs OCR (tray "OCR capture").</summary>
+    public bool OcrMode { get; set; }
+
     /// <summary>Raised after a file was written.</summary>
     public event Action<string>? Saved;
 
@@ -463,7 +469,11 @@ internal sealed class OverlayForm : Form
                     _pendingClick = false;
                     _sel = WindowAt(p) ?? Rectangle.Empty;
                 }
-                if (_sel.Width >= 2 && _sel.Height >= 2) _mode = Mode.Selected;
+                if (_sel.Width >= 2 && _sel.Height >= 2)
+                {
+                    _mode = Mode.Selected;
+                    if (OcrMode) BeginInvoke(new Action(Ocr));
+                }
                 else
                 {
                     _mode = Mode.Idle;
@@ -563,6 +573,9 @@ internal sealed class OverlayForm : Form
             case Keys.Control | Keys.Z:
                 Undo();
                 return true;
+            case Keys.Control | Keys.T:
+                if (HasSel && _mode == Mode.Selected) Ocr();
+                return true;
             case Keys.Left:
             case Keys.Right:
             case Keys.Up:
@@ -607,6 +620,7 @@ internal sealed class OverlayForm : Form
             case "text": SetTool(Tool.Text); break;
             case "mosaic": SetTool(Tool.Mosaic); break;
             case "undo": Undo(); break;
+            case "ocr": Ocr(); return;
             case "pin": Pin(); return;
             case "save": Save(); return;
             case "cancel": Close(); return;
@@ -823,6 +837,16 @@ internal sealed class OverlayForm : Form
         PinRequested?.Invoke(bmp, loc);
     }
 
+    private void Ocr()
+    {
+        if (!HasSel || IsDisposed) return;
+        CancelText();
+        var bmp = _src.Clone(_sel, PixelFormat.Format32bppArgb);
+        var near = new Point(_sel.X + _vb.X, _sel.Bottom + _vb.Y + 8);
+        Close();
+        OcrRequested?.Invoke(bmp, near);
+    }
+
     /// <summary>Headless render-pipeline check used by --overlay-selftest.</summary>
     internal Bitmap SelfTestRender()
     {
@@ -870,6 +894,7 @@ internal sealed class OverlayForm : Form
         string[] thickNames = { "Thin", "Medium", "Thick" };
         for (int i = 0; i < Thickness.Length; i++) items.Add(($"th{i}", thickNames[i] + " (also text size / mosaic block)", true));
         items.Add(null);
+        items.Add(("ocr", "Extract text - OCR (Ctrl+T)", false));
         items.Add(("pin", "Pin to screen", false));
         items.Add(("save", "Save as PNG (Ctrl+S)", false));
         items.Add(("cancel", "Cancel (Esc)", false));
@@ -1068,6 +1093,9 @@ internal sealed class OverlayForm : Form
                             if ((i + j) % 2 == 0) g.FillRectangle(brush, ox + i * cell, oy + j * cell, cell, cell);
                     g.DrawRectangle(pen, ox, oy, cell * 3, cell * 3);
                 }
+                break;
+            case "ocr":
+                DrawCentered(g, "OCR", GetFont("Segoe UI", 10 * s, FontStyle.Bold), fg, r);
                 break;
             case "undo": IconGlyph(g, "\uE7A7", "↶", fg, r); break;
             case "pin": IconGlyph(g, "\uE718", "P", fg, r); break;

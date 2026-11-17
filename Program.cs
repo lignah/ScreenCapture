@@ -10,6 +10,8 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         // Hidden test hooks.
+        int o = Array.IndexOf(args, "--ocr-test");
+        if (o >= 0) return RunOcrTest(args, o);
         int i = Array.IndexOf(args, "--fullscreen-test");
         if (i >= 0) return RunTest(args, i, overlay: false);
         i = Array.IndexOf(args, "--overlay-selftest");
@@ -30,6 +32,40 @@ internal static class Program
         Application.Run(new TrayContext(startCapture: args.Contains("--capture")));
         GC.KeepAlive(mutex);
         return 0;
+    }
+
+    /// <summary>--ocr-test &lt;image&gt; [--out file]: prints languages + recognized text to stdout and a UTF-8 file.</summary>
+    private static int RunOcrTest(string[] args, int index)
+    {
+        string image = index + 1 < args.Length ? Path.GetFullPath(args[index + 1]) : "";
+        int oi = Array.IndexOf(args, "--out");
+        string outPath = oi >= 0 && oi + 1 < args.Length ? Path.GetFullPath(args[oi + 1]) : image + ".ocr.txt";
+        var sb = new System.Text.StringBuilder();
+        int code = 0;
+        try
+        {
+            sb.AppendLine("available: " + string.Join(", ", OcrService.AvailableLanguages));
+            if (!OcrService.HasKorean) sb.AppendLine("note: " + OcrService.MissingKoreanHelp);
+            using var bmp = new Bitmap(image);
+            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp)).GetAwaiter().GetResult();
+            sb.AppendLine($"engine: {outcome.LanguageTag}  scale: {outcome.Scale}x  lines: {outcome.LineCount}  image: {bmp.Width}x{bmp.Height}");
+            sb.AppendLine("----- text -----");
+            sb.AppendLine(outcome.Text);
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("error: " + ex);
+            code = 1;
+        }
+        var text = sb.ToString();
+        try { File.WriteAllText(outPath, text, new System.Text.UTF8Encoding(false)); } catch { }
+        try
+        {
+            using var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
+            stdout.Write(text);
+        }
+        catch { }
+        return code;
     }
 
     private static int RunTest(string[] args, int index, bool overlay)
