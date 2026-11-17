@@ -26,6 +26,9 @@ internal sealed class AppSettings
     /// <summary>OCR result window: join wrapped lines into paragraphs (true) or keep original line breaks.</summary>
     public bool OcrMergeParagraphs { get; set; } = true;
 
+    /// <summary>"paddle" (default; falls back to Windows OCR) or "windows".</summary>
+    public string OcrEngine { get; set; } = "paddle";
+
     [JsonIgnore]
     public string EffectiveFolder => string.IsNullOrWhiteSpace(SaveFolder) ? ImageOutput.DefaultFolder : SaveFolder;
 

@@ -16,7 +16,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.32.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- PaddleOCR ONNX models: kept as loose files next to the exe (fetch with tools\get-models.ps1). -->
+    <None Include="models\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="app.ico" LogicalName="ScreenCapture.app.ico" />
   </ItemGroup>
 
+  <!-- OnnxRuntime's NuGet package ships native import libraries (.lib) that are useless at runtime. -->
+  <Target Name="RemoveNativeImportLibs" AfterTargets="Publish">
+    <Delete Files="$(PublishDir)onnxruntime.lib;$(PublishDir)onnxruntime_providers_shared.lib;$(PublishDir)onnxruntime_providers_azure.lib" />
+  </Target>
 </Project>

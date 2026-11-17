@@ -9,7 +9,7 @@ using WinSoftwareBitmap = Windows.Graphics.Imaging.SoftwareBitmap;
 
 namespace ScreenCapture;
 
-internal sealed record OcrOutcome(IReadOnlyList<OcrLine> Lines, string LanguageTag, int Scale)
+internal sealed record OcrOutcome(IReadOnlyList<OcrLine> Lines, string LanguageTag, int Scale, string? Note = null)
 {
     public int LineCount => Lines.Count;
     public string Text => OcrTextLayout.Raw(Lines);
@@ -65,7 +65,39 @@ internal static class OcrService
         return list;
     }
 
-    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source, int? forceScale = null)
+    public static bool IsWindowsEngine(string? engine) =>
+        string.Equals(engine, "windows", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// PaddleOCR (default) or Windows OCR. Paddle loads its models only for this call and frees them afterwards;
+    /// if its models are missing or it fails, Windows OCR is used instead.
+    /// </summary>
+    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source, string? engine = "paddle", int? forceScale = null)
+    {
+        string? note = null;
+        if (!IsWindowsEngine(engine))
+        {
+            if (PaddleOcr.IsAvailable)
+            {
+                try
+                {
+                    using var copy = new Bitmap(source);
+                    var lines = await Task.Run(() => PaddleOcr.RecognizeAndRelease(copy));
+                    return new OcrOutcome(lines, "PaddleOCR ko", 1);
+                }
+                catch (Exception ex)
+                {
+                    ErrorLog.Write(ex);
+                    note = "PaddleOCR failed, used Windows OCR";
+                }
+            }
+            else note = "PaddleOCR models missing, used Windows OCR";
+        }
+        var outcome = await RecognizeWindowsAsync(source, forceScale);
+        return note == null ? outcome : outcome with { Note = note };
+    }
+
+    private static async Task<OcrOutcome> RecognizeWindowsAsync(Bitmap source, int? forceScale)
     {
         var engines = EnginesInPreferenceOrder();
         if (engines.Count == 0)

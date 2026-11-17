@@ -10,6 +10,8 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         // Hidden test hooks.
+        int bi = Array.IndexOf(args, "--ocr-bench");
+        if (bi >= 0) return RunOcrBench(args, bi);
         int o = Array.IndexOf(args, "--ocr-test");
         if (o >= 0) return RunOcrTest(args, o);
         int i = Array.IndexOf(args, "--fullscreen-test");
@@ -49,7 +51,12 @@ internal static class Program
             using var bmp = new Bitmap(image);
             int si = Array.IndexOf(args, "--scale");
             int? scale = si >= 0 && si + 1 < args.Length && int.TryParse(args[si + 1], out var sv) ? sv : null;
-            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, scale)).GetAwaiter().GetResult();
+            int ei = Array.IndexOf(args, "--engine");
+            string engine = ei >= 0 && ei + 1 < args.Length ? args[ei + 1] : "paddle";
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, engine, scale)).GetAwaiter().GetResult();
+            sb.AppendLine($"elapsed: {sw.ElapsedMilliseconds} ms" + (outcome.Note != null ? $"  note: {outcome.Note}" : ""));
+            if (!OcrService.IsWindowsEngine(engine)) sb.AppendLine("paddle: " + PaddleOcr.LastTimings);
             sb.AppendLine($"engine: {outcome.LanguageTag}  scale: {outcome.Scale}x  lines: {outcome.LineCount}  image: {bmp.Width}x{bmp.Height}");
             if (args.Contains("--boxes"))
                 foreach (var l in outcome.Lines)
@@ -73,6 +80,64 @@ internal static class Program
         }
         catch { }
         return code;
+    }
+
+    /// <summary>--ocr-bench &lt;image&gt; [--engine paddle|windows] [--runs N]: latency + memory before/peak/after.</summary>
+    private static int RunOcrBench(string[] args, int index)
+    {
+        string image = Path.GetFullPath(args[index + 1]);
+        int ei = Array.IndexOf(args, "--engine");
+        string engine = ei >= 0 && ei + 1 < args.Length ? args[ei + 1] : "paddle";
+        int ri = Array.IndexOf(args, "--runs");
+        int runs = ri >= 0 && ri + 1 < args.Length && int.TryParse(args[ri + 1], out var rv) ? rv : 3;
+        var sb = new System.Text.StringBuilder();
+        var proc = System.Diagnostics.Process.GetCurrentProcess();
+        string Mem()
+        {
+            proc.Refresh();
+            return $"WS {proc.WorkingSet64 / 1048576.0:0.0} MB, private {proc.PrivateMemorySize64 / 1048576.0:0.0} MB";
+        }
+
+        using var bmp = new Bitmap(image);
+        PaddleOcr.ReleaseMemory();
+        Thread.Sleep(500);
+        sb.AppendLine($"engine={engine} image={bmp.Width}x{bmp.Height} paddleModels={PaddleOcr.IsAvailable}");
+        sb.AppendLine("before:  " + Mem());
+        for (int r = 1; r <= runs; r++)
+        {
+            long peakWs = 0, peakPriv = 0;
+            bool stop = false;
+            var sampler = new Thread(() =>
+            {
+                using var p = System.Diagnostics.Process.GetCurrentProcess();
+                while (!Volatile.Read(ref stop))
+                {
+                    p.Refresh();
+                    peakWs = Math.Max(peakWs, p.WorkingSet64);
+                    peakPriv = Math.Max(peakPriv, p.PrivateMemorySize64);
+                    Thread.Sleep(5);
+                }
+            }) { IsBackground = true };
+            sampler.Start();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, engine)).GetAwaiter().GetResult();
+            long ms = sw.ElapsedMilliseconds;
+            Volatile.Write(ref stop, true);
+            sampler.Join();
+            if (OcrService.IsWindowsEngine(engine)) PaddleOcr.ReleaseMemory();
+            Thread.Sleep(1000);
+            sb.AppendLine($"run {r}: {ms} ms, lines {outcome.LineCount} ({outcome.LanguageTag}{(outcome.Note != null ? ", " + outcome.Note : "")}) | " +
+                          $"peak WS {peakWs / 1048576.0:0.0} MB, private {peakPriv / 1048576.0:0.0} MB | after: {Mem()}");
+        }
+        var text = sb.ToString();
+        try { File.WriteAllText(image + ".bench.txt", text); } catch { }
+        try
+        {
+            using var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
+            stdout.Write(text);
+        }
+        catch { }
+        return 0;
     }
 
     private static int RunTest(string[] args, int index, bool overlay)
