@@ -26,8 +26,11 @@ internal sealed class AppSettings
     /// <summary>OCR result window: join wrapped lines into paragraphs (true) or keep original line breaks.</summary>
     public bool OcrMergeParagraphs { get; set; } = true;
 
-    /// <summary>Copy OCR text to the clipboard as soon as recognition finishes.</summary>
-    public bool OcrAutoCopy { get; set; } = true;
+    /// <summary>OCR always copies to the clipboard; this additionally opens the editable result window.</summary>
+    public bool OcrShowWindow { get; set; }
+
+    /// <summary>Active PaddleOCR recognition language id (see <see cref="OcrLanguages.Catalog"/>).</summary>
+    public string OcrLanguage { get; set; } = OcrLanguages.DefaultId;
 
     /// <summary>"paddle" (default; falls back to Windows OCR) or "windows".</summary>
     public string OcrEngine { get; set; } = "paddle";

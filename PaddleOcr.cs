@@ -34,19 +34,18 @@ internal static class PaddleOcr
 
     public static string ModelDir => Path.Combine(AppContext.BaseDirectory, "models");
 
+    /// <summary>Shared detection model present and at least one recognition language installed.</summary>
     public static bool IsAvailable =>
-        File.Exists(Path.Combine(ModelDir, DetFile)) &&
-        File.Exists(Path.Combine(ModelDir, RecFile)) &&
-        File.Exists(Path.Combine(ModelDir, DictFile));
+        File.Exists(Path.Combine(ModelDir, DetFile)) && OcrLanguages.Installed().Count > 0;
 
     /// <summary>Runs detection + recognition, then frees the sessions and trims the process memory.</summary>
-    public static List<OcrLine> RecognizeAndRelease(Bitmap source)
+    public static List<OcrLine> RecognizeAndRelease(Bitmap source, InstalledOcrLanguage lang)
     {
         lock (Gate)
         {
             try
             {
-                return Recognize(source);
+                return Recognize(source, lang);
             }
             finally
             {
@@ -55,9 +54,9 @@ internal static class PaddleOcr
         }
     }
 
-    private static List<OcrLine> Recognize(Bitmap source)
+    private static List<OcrLine> Recognize(Bitmap source, InstalledOcrLanguage lang)
     {
-        var dict = File.ReadAllLines(Path.Combine(ModelDir, DictFile), Encoding.UTF8);
+        var dict = File.ReadAllLines(lang.DictFile, Encoding.UTF8);
         using var options = new SessionOptions
         {
             // No arena / memory patterns: freed tensors go straight back to the OS heap.
@@ -83,7 +82,7 @@ internal static class PaddleOcr
         if (boxes.Count > 0)
         {
             long t0 = sw.ElapsedMilliseconds;
-            using var rec = new InferenceSession(Path.Combine(ModelDir, RecFile), options);
+            using var rec = new InferenceSession(lang.RecFile, options);
             tRecLoad = sw.ElapsedMilliseconds - t0;
             foreach (var box in boxes)
             {

@@ -11,15 +11,16 @@ internal sealed class OcrResultForm : Form
     private readonly AppSettings _settings;
     private OcrOutcome? _outcome;
 
-    /// <summary>Raised on the UI thread when recognition ends: (text shown, copied to clipboard).</summary>
-    public event Action<string, bool>? Completed;
+    private readonly bool _copiedInitially;
 
     public const string CopiedMessage = "클립보드에 복사됨";
 
-    public OcrResultForm(Bitmap image, Point nearScreen, AppSettings settings)
+    public OcrResultForm(Bitmap image, Point nearScreen, AppSettings settings, OcrOutcome outcome, bool copied)
     {
         _image = image;
         _settings = settings;
+        _outcome = outcome;
+        _copiedInitially = copied;
         SuspendLayout();
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -43,7 +44,7 @@ internal sealed class OcrResultForm : Form
             Dock = DockStyle.Fill,
             Font = new Font("Malgun Gothic", 10.5f),
             ReadOnly = true,
-            Text = "인식 중…",
+            Text = "",
         };
         _status = new Label { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Text = "" };
         _copy = new Button { Text = "Copy", AutoSize = true, Enabled = false, Anchor = AnchorStyles.Right };
@@ -99,8 +100,7 @@ internal sealed class OcrResultForm : Form
         _settings.Save();
         if (_outcome == null || _outcome.LineCount == 0) return;
         _text.Text = _outcome.Format(_merge.Checked);
-        if (_settings.OcrAutoCopy) CopyText(false);
-        else _status.Text = Status(_outcome);
+        CopyText(false);
     }
 
     private string _elapsed = "";
@@ -108,43 +108,23 @@ internal sealed class OcrResultForm : Form
     private string Status(OcrOutcome o) =>
         $"{o.LineCount} lines · {o.LanguageTag}{_elapsed} · {ModeName}" + (o.Note != null ? $" · {o.Note}" : "");
 
-    protected override async void OnShown(EventArgs e)
+    protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
         NoFlash.Reveal(this);
         Activate();
-        _status.Text = "인식 중…";
-        try
+        var outcome = _outcome!;
+        _text.ReadOnly = false;
+        _text.Text = outcome.Format(_merge.Checked);
+        _text.SelectionStart = 0;
+        _text.SelectionLength = 0;
+        if (outcome.Text.Trim().Length == 0)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var outcome = await OcrService.RecognizeAsync(_image, _settings.OcrEngine);
-            _elapsed = $" · {sw.Elapsed.TotalSeconds:0.0}s";
-            if (IsDisposed) return;
-            _outcome = outcome;
-            _text.ReadOnly = false;
-            _text.Text = outcome.Format(_merge.Checked);
-            _text.SelectionStart = 0;
-            _text.SelectionLength = 0;
-            if (outcome.Text.Trim().Length == 0)
-            {
-                _status.Text = $"No text found ({outcome.LanguageTag}{_elapsed})" + (outcome.Note != null ? $" · {outcome.Note}" : "");
-                Completed?.Invoke("", false);
-                return;
-            }
-            _copy.Enabled = true;
-            bool copied = false;
-            if (_settings.OcrAutoCopy) copied = CopyText(false);
-            else _status.Text = Status(outcome);
-            Completed?.Invoke(_text.Text, copied);
+            _status.Text = "텍스트를 찾지 못했어요" + (outcome.Note != null ? $" · {outcome.Note}" : "");
+            return;
         }
-        catch (Exception ex)
-        {
-            ErrorLog.Write(ex);
-            if (IsDisposed) return;
-            _text.Text = "OCR failed: " + ex.Message;
-            _status.Text = "Error";
-            Completed?.Invoke("", false);
-        }
+        _copy.Enabled = true;
+        _status.Text = Status(outcome) + (_copiedInitially ? " · " + CopiedMessage : "");
     }
 
     /// <summary>Copies the selection (manual Copy) or the whole text; runs on the STA UI thread.</summary>

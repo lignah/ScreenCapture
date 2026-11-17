@@ -72,18 +72,20 @@ internal static class OcrService
     /// PaddleOCR (default) or Windows OCR. Paddle loads its models only for this call and frees them afterwards;
     /// if its models are missing or it fails, Windows OCR is used instead.
     /// </summary>
-    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source, string? engine = "paddle", int? forceScale = null)
+    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source, string? engine = "paddle", int? forceScale = null,
+        string? language = null)
     {
         string? note = null;
         if (!IsWindowsEngine(engine))
         {
-            if (PaddleOcr.IsAvailable)
+            var lang = OcrLanguages.Resolve(language ?? OcrLanguages.DefaultId);
+            if (PaddleOcr.IsAvailable && lang != null)
             {
                 try
                 {
                     using var copy = new Bitmap(source);
-                    var lines = await Task.Run(() => PaddleOcr.RecognizeAndRelease(copy));
-                    return new OcrOutcome(lines, "PaddleOCR ko", 1);
+                    var lines = await Task.Run(() => PaddleOcr.RecognizeAndRelease(copy, lang));
+                    return new OcrOutcome(lines, "PaddleOCR " + lang.Info.Id, 1);
                 }
                 catch (Exception ex)
                 {

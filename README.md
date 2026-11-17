@@ -7,8 +7,9 @@ Clean-room implementation modeled on general screenshot-tool behavior.
 `publish\ScreenCapture.exe` (self-contained, no .NET install needed). It lives in the system tray.
 
 - **Ctrl+Shift+A** (default, changeable in Settings) or left-click the tray icon: region capture
-- Tray menu: Region capture, OCR capture (extract text), Full screen capture, OCR 설정 (OCR 결과 자동 복사 / 문단으로 합치기 / OCR 엔진: PaddleOCR or Windows OCR), Open screenshots folder, Settings..., Exit
-- OCR (toolbar button, Ctrl+T, tray OCR capture) copies the recognized text to the clipboard automatically when 'OCR 결과 자동 복사' is on (default), in the current 문단으로 합치기 mode; the result window and a short tray notification show '클립보드에 복사됨'. Clipboard writes run on the UI (STA) thread and retry for ~1 s if another app holds the clipboard
+- Tray menu: Region capture, OCR capture (extract text), Full screen capture, OCR 설정 (문단으로 합치기 / 결과 창 표시 / OCR 엔진: PaddleOCR or Windows OCR / OCR 언어: installed PaddleOCR languages, 언어 추가…, 언어 삭제…), Open screenshots folder, Settings..., Exit
+- OCR (toolbar button, Ctrl+T, tray OCR capture) has no window: the tray icon gets an orange dot and the tooltip says '인식 중…' while recognizing, then the text is copied to the clipboard (in the current 문단으로 합치기 mode) and a short notification shows 'OCR 복사됨 · N줄' with a preview ('텍스트를 찾지 못했어요' when empty). Turn on 'OCR 설정 → 결과 창 표시' to also open the editable result window. Clipboard writes run on the UI (STA) thread and retry for ~1 s if another app holds the clipboard
+- OCR languages: Korean (PP-OCRv5) is bundled in models\. 언어 추가… downloads other official PaddleOCR recognition models (RapidAI/RapidOCR ModelScope repo, SHA-256 verified) into %LOCALAPPDATA%\ScreenCapture\models\<id>\: ch (Chinese + English + Japanese, v5), en, japan (v4), latin, cyrillic, eslav, el, arabic, devanagari, th, ta, te. 언어 삭제… removes downloaded ones (not the active one, not the bundled baseline, never the last one). With the Windows OCR engine the submenu also lists installed Windows OCR languages (read-only)
 
 ## Capture overlay
 - Screen is frozen and dimmed across all monitors; magnifier shows cursor coordinates and pixel RGB
@@ -34,7 +35,8 @@ dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true 
 - `--overlay-selftest <path>`: render a sample selection with every annotation type to PNG and exit
 - `--ocr-test <image> [--out file] [--engine paddle|windows]`: print available OCR languages + recognized text (raw and merged; `--boxes` adds line boxes, `--scale N` forces upscale) to stdout and `<image>.ocr.txt`)
 - `--ocr-bench <image> [--engine paddle|windows] [--runs N]`: print memory before / peak during / after each OCR run plus latency (also `<image>.bench.txt`)
-- `--ocr-copy-test <image> [--engine paddle|windows] [--merge on|off] [--autocopy on|off] [--lock-ms N]`: run the real OCR window, verify the clipboard equals the window text (or is untouched with autocopy off), test the locked-clipboard retry, restore the previous clipboard text
+- `--ocr-copy-test <image> [--engine paddle|windows] [--merge on|off] [--lang id] [--lock-ms N]`: run the window-less tray OCR path, verify the clipboard equals the OCR text
+- `--lang-list` / `--lang-add <id>` / `--lang-delete <id>`: manage PaddleOCR languages from the command line; `--ocr-test` also accepts `--lang id`, test the locked-clipboard retry, restore the previous clipboard text
 - `--capture`: start and open the region overlay immediately
 
 ## OCR engines

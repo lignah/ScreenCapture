@@ -12,6 +12,7 @@ internal static class Program
         // Hidden test hooks.
         int bi = Array.IndexOf(args, "--ocr-bench");
         if (bi >= 0) return RunOcrBench(args, bi);
+        if (args.Contains("--lang-list") || args.Contains("--lang-add") || args.Contains("--lang-delete")) return RunLangTool(args);
         int ct = Array.IndexOf(args, "--ocr-copy-test");
         if (ct >= 0) return RunOcrCopyTest(args, ct);
         int o = Array.IndexOf(args, "--ocr-test");
@@ -56,7 +57,7 @@ internal static class Program
             int ei = Array.IndexOf(args, "--engine");
             string engine = ei >= 0 && ei + 1 < args.Length ? args[ei + 1] : "paddle";
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, engine, scale)).GetAwaiter().GetResult();
+            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, engine, scale, Arg(args, "--lang", OcrLanguages.DefaultId))).GetAwaiter().GetResult();
             sb.AppendLine($"elapsed: {sw.ElapsedMilliseconds} ms" + (outcome.Note != null ? $"  note: {outcome.Note}" : ""));
             if (!OcrService.IsWindowsEngine(engine)) sb.AppendLine("paddle: " + PaddleOcr.LastTimings);
             sb.AppendLine($"engine: {outcome.LanguageTag}  scale: {outcome.Scale}x  lines: {outcome.LineCount}  image: {bmp.Width}x{bmp.Height}");
@@ -99,10 +100,10 @@ internal static class Program
     }
 
     /// <summary>
-    /// --ocr-copy-test &lt;image&gt; [--engine paddle|windows] [--merge on|off] [--autocopy on|off] [--lock-ms N]:
-    /// runs the real OCR result window (async OCR, auto-copy on the UI thread), then reads the clipboard back and
-    /// compares it to the window text. Then checks the retry path while another thread holds the clipboard open.
-    /// The previous clipboard text is restored afterwards. Output: stdout + &lt;image&gt;.copytest.txt.
+    /// --ocr-copy-test &lt;image&gt; [--engine paddle|windows] [--merge on|off] [--lang id] [--lock-ms N]:
+    /// runs the window-less tray OCR path (background OCR, clipboard write on the STA UI thread), reads the clipboard
+    /// back and compares it with the produced text, then checks the retry path while another thread holds the
+    /// clipboard open. The previous clipboard text is restored. Output: stdout + &lt;image&gt;.copytest.txt.
     /// </summary>
     private static int RunOcrCopyTest(string[] args, int index)
     {
@@ -111,44 +112,38 @@ internal static class Program
         {
             OcrEngine = Arg(args, "--engine", "paddle"),
             OcrMergeParagraphs = Arg(args, "--merge", "on") != "off",
-            OcrAutoCopy = Arg(args, "--autocopy", "on") != "off",
+            OcrLanguage = Arg(args, "--lang", OcrLanguages.DefaultId),
         };
         int lockMs = int.TryParse(Arg(args, "--lock-ms", "400"), out var lm) ? lm : 400;
         var sb = new System.Text.StringBuilder();
         int code = 0;
         string? previous = Clipboard.ContainsText() ? Clipboard.GetText() : null;
-        const string sentinel = "__ocr_copy_test_sentinel__";
         try
         {
-            Clipboard.SetText(sentinel);
-            sb.AppendLine($"engine={settings.OcrEngine} merge={settings.OcrMergeParagraphs} autocopy={settings.OcrAutoCopy} thread={Thread.CurrentThread.GetApartmentState()}");
-            string shown = "";
-            bool copied = false, done = false;
-            var bmp = new Bitmap(image);
-            var form = new OcrResultForm(bmp, new Point(100, 100), settings);
-            form.Completed += (text, c) =>
+            Clipboard.SetText("__ocr_copy_test_sentinel__");
+            sb.AppendLine($"engine={settings.OcrEngine} lang={settings.OcrLanguage} merge={settings.OcrMergeParagraphs}");
+            using var bmp = new Bitmap(image);
+            OcrRunResult? r = null;
+            var appCtx = new ApplicationContext();
+            var start = new System.Windows.Forms.Timer { Interval = 1 };
+            start.Tick += async (_, _) =>
             {
-                shown = text;
-                copied = c;
-                done = true;
-                sb.AppendLine($"completed on UI thread: {!form.InvokeRequired}, apartment {Thread.CurrentThread.GetApartmentState()}");
-                form.BeginInvoke(form.Close);
+                start.Stop();
+                r = await OcrRunner.RunAsync(bmp, settings);
+                appCtx.ExitThread();
             };
-            var timeout = new System.Windows.Forms.Timer { Interval = 60000 };
-            timeout.Tick += (_, _) => { timeout.Stop(); form.Close(); };
-            timeout.Start();
-            Application.Run(form);
-            timeout.Dispose();
+            start.Start();
+            Application.Run(appCtx);
+            start.Dispose();
             string clip = Clipboard.ContainsText() ? Clipboard.GetText() : "";
-            bool expectCopy = settings.OcrAutoCopy && shown.Length > 0;
-            bool ok = done && (expectCopy ? copied && clip == shown : clip == sentinel);
-            sb.AppendLine($"completed={done} copied={copied} clipboardLines={clip.Split('\n').Length} windowLines={shown.Split('\n').Length}");
-            sb.AppendLine("auto-copy check: " + (ok ? "PASS" : "FAIL") + (expectCopy ? " (clipboard == window text)" : " (clipboard untouched)"));
+            bool ok = r != null && r.Copied && clip == r.Text && OcrRunner.LastCopyApartment == ApartmentState.STA;
+            sb.AppendLine($"ocr: {r?.ElapsedMs} ms, {r?.Outcome?.LanguageTag}, lines={r?.Lines}, copied={r?.Copied}, copy thread={OcrRunner.LastCopyApartment}" + (r?.Error != null ? ", error " + r.Error : "") + (r?.Outcome?.Note != null ? ", note " + r.Outcome.Note : ""));
+            sb.AppendLine($"notification: OCR 복사됨 · {r?.Lines}줄 | {r?.Preview()}");
+            sb.AppendLine("auto-copy check: " + (ok ? "PASS (clipboard == OCR text)" : "FAIL"));
             if (!ok) code = 1;
             sb.AppendLine("----- clipboard -----");
             sb.AppendLine(clip);
 
-            // Retry path: another thread holds the clipboard open for lockMs.
             using var opened = new ManualResetEventSlim();
             var holder = new Thread(() =>
             {
@@ -160,7 +155,7 @@ internal static class Program
             holder.Start();
             opened.Wait();
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var err = ClipboardText.TrySet(shown.Length > 0 ? shown : "lock-test");
+            var err = ClipboardText.TrySet("lock-test");
             sw.Stop();
             holder.Join();
             bool lockOk = err == null && sw.ElapsedMilliseconds >= lockMs - 60;
@@ -177,8 +172,60 @@ internal static class Program
             if (previous != null) ClipboardText.TrySet(previous);
             else try { Clipboard.Clear(); } catch { }
         }
+        return Emit(sb, image + ".copytest.txt", code);
+    }
+
+    /// <summary>--lang-list | --lang-add &lt;id&gt; | --lang-delete &lt;id&gt; (PaddleOCR recognition languages).</summary>
+    private static int RunLangTool(string[] args)
+    {
+        var sb = new System.Text.StringBuilder();
+        int code = 0;
+        try
+        {
+            string add = Arg(args, "--lang-add", ""), del = Arg(args, "--lang-delete", "");
+            if (add.Length > 0)
+            {
+                var info = OcrLanguages.Find(add) ?? throw new ArgumentException("unknown language id " + add);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                long last = -1;
+                var progress = new SyncProgress<(long Done, long Total)>(p =>
+                {
+                    long pct = p.Total > 0 ? p.Done * 100 / p.Total : 0;
+                    if (pct / 25 != last / 25) { last = pct; sb.AppendLine($"  {pct}% ({p.Done:N0}/{p.Total:N0})"); }
+                });
+                OcrLanguages.DownloadAsync(info, progress, CancellationToken.None).GetAwaiter().GetResult();
+                sb.AppendLine($"added {info.Id} ({info.Name}) in {sw.ElapsedMilliseconds} ms, SHA-256 verified");
+            }
+            if (del.Length > 0)
+            {
+                var dir = Path.Combine(OcrLanguages.UserDir, del);
+                bool ok = OcrLanguages.Delete(del);
+                sb.AppendLine($"delete {del}: {(ok ? "ok" : "not deleted (bundled or not installed)")}; folder exists: {Directory.Exists(dir)}");
+                if (!ok) code = 1;
+            }
+            sb.AppendLine("user model folder: " + OcrLanguages.UserDir);
+            sb.AppendLine("installed:");
+            foreach (var l in OcrLanguages.Installed())
+                sb.AppendLine($"  {l.Info.Id,-10} {l.Info.Name} [{l.Info.Version}]{(l.Bundled ? " (bundled)" : "")} {new FileInfo(l.RecFile).Length:N0} B  {l.RecFile}");
+            sb.AppendLine("catalog: " + string.Join(", ", OcrLanguages.Catalog.Select(c => c.Id)));
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("error: " + ex.Message);
+            code = 1;
+        }
+        return Emit(sb, null, code);
+    }
+
+    private sealed class SyncProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
+    private static int Emit(System.Text.StringBuilder sb, string? file, int code)
+    {
         var outText = sb.ToString();
-        try { File.WriteAllText(image + ".copytest.txt", outText, new System.Text.UTF8Encoding(false)); } catch { }
+        if (file != null) try { File.WriteAllText(file, outText, new System.Text.UTF8Encoding(false)); } catch { }
         try
         {
             using var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));

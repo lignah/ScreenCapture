@@ -47,25 +47,28 @@ internal sealed class TrayContext : ApplicationContext
         menu.Items.Add("OCR capture (extract text)", null, (_, _) => RunLater(180, () => StartRegionCapture(ocrMode: true)));
         menu.Items.Add("Full screen capture", null, (_, _) => RunLater(250, FullScreenCapture));
         menu.Items.Add(new ToolStripSeparator());
-        var autoCopy = new ToolStripMenuItem("OCR 결과 자동 복사") { CheckOnClick = true };
-        autoCopy.CheckedChanged += (_, _) => { _settings.OcrAutoCopy = autoCopy.Checked; _settings.Save(); };
+        var showWindow = new ToolStripMenuItem("결과 창 표시") { CheckOnClick = true };
+        showWindow.CheckedChanged += (_, _) => { _settings.OcrShowWindow = showWindow.Checked; _settings.Save(); };
         var merge = new ToolStripMenuItem("문단으로 합치기") { CheckOnClick = true };
         merge.CheckedChanged += (_, _) => { _settings.OcrMergeParagraphs = merge.Checked; _settings.Save(); };
         var paddle = new ToolStripMenuItem("PaddleOCR", null, (_, _) => { _settings.OcrEngine = "paddle"; _settings.Save(); });
         var windows = new ToolStripMenuItem("Windows OCR", null, (_, _) => { _settings.OcrEngine = "windows"; _settings.Save(); });
         var engine = new ToolStripMenuItem("OCR 엔진");
         engine.DropDownItems.AddRange(new ToolStripItem[] { paddle, windows });
+        var languages = new ToolStripMenuItem("OCR 언어");
+        languages.DropDownItems.Add("…"); // filled on open
         var ocrSettings = new ToolStripMenuItem("OCR 설정");
-        ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { autoCopy, merge, new ToolStripSeparator(), engine });
+        ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { merge, showWindow, new ToolStripSeparator(), engine, languages });
         menu.Items.Add(ocrSettings);
         // Settings can also change in the Settings dialog or the OCR window; refresh check marks on open.
         menu.Opening += (_, _) =>
         {
-            autoCopy.Checked = _settings.OcrAutoCopy;
+            showWindow.Checked = _settings.OcrShowWindow;
             merge.Checked = _settings.OcrMergeParagraphs;
             bool win = OcrService.IsWindowsEngine(_settings.OcrEngine);
             paddle.Checked = !win;
             windows.Checked = win;
+            FillLanguageMenu(languages);
         };
         menu.Items.Add("Open screenshots folder", null, (_, _) => OpenFolder());
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
@@ -151,15 +154,7 @@ internal sealed class TrayContext : ApplicationContext
             var windows = ScreenGrabber.GetWindowRects();
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
             var overlay = new OverlayForm(bmp, vb, windows, _settings) { OcrMode = ocrMode };
-            overlay.OcrRequested += (img, near) =>
-            {
-                var form = new OcrResultForm(img, near, _settings);
-                form.Completed += (_, copied) =>
-                {
-                    if (copied) _tray.ShowBalloonTip(1500, "Screen Capture", "OCR 텍스트 " + OcrResultForm.CopiedMessage, ToolTipIcon.None);
-                };
-                form.Show();
-            };
+            overlay.OcrRequested += (img, near) => _ = RunOcr(img, near);
             overlay.PinRequested += (img, loc) =>
             {
                 var pin = new PinForm(img, loc, _settings);
@@ -177,6 +172,110 @@ internal sealed class TrayContext : ApplicationContext
             ErrorLog.Write(ex);
             _tray.ShowBalloonTip(4000, "Screen Capture", "Capture failed: " + ex.Message, ToolTipIcon.Error);
         }
+    }
+
+    private int _ocrBusy;
+    private static Icon? _busyIcon;
+
+    /// <summary>Tray icon with an orange dot, shown while OCR runs.</summary>
+    private static Icon BusyIcon
+    {
+        get
+        {
+            if (_busyIcon != null) return _busyIcon;
+            try
+            {
+                using var bmp = AppIcon.ToBitmap();
+                using (var g = Graphics.FromImage(bmp))
+                {
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    int d = Math.Max(6, bmp.Width / 2);
+                    g.FillEllipse(Brushes.White, bmp.Width - d - 1, bmp.Height - d - 1, d + 1, d + 1);
+                    g.FillEllipse(Brushes.DarkOrange, bmp.Width - d, bmp.Height - d, d - 1, d - 1);
+                }
+                _busyIcon = Icon.FromHandle(bmp.GetHicon());
+            }
+            catch { _busyIcon = AppIcon; }
+            return _busyIcon;
+        }
+    }
+
+    /// <summary>OCR without a window: busy tray icon/tooltip, copy to clipboard, short notification.</summary>
+    private async Task RunOcr(Bitmap img, Point near)
+    {
+        _ocrBusy++;
+        string idleText = _tray.Text;
+        _tray.Icon = BusyIcon;
+        _tray.Text = "Screen Capture - 인식 중…";
+        bool handedOff = false;
+        try
+        {
+            var r = await OcrRunner.RunAsync(img, _settings);
+            if (r.Error != null && !r.Copied && r.Outcome == null)
+                _tray.ShowBalloonTip(3000, "OCR 실패", r.Error, ToolTipIcon.Error);
+            else if (r.Lines == 0)
+                _tray.ShowBalloonTip(2000, "Screen Capture", "텍스트를 찾지 못했어요", ToolTipIcon.Info);
+            else if (r.Copied)
+                _tray.ShowBalloonTip(2000, $"OCR 복사됨 · {r.Lines}줄", r.Preview(), ToolTipIcon.None);
+            else
+                _tray.ShowBalloonTip(3000, "OCR 복사 실패", r.Error ?? "", ToolTipIcon.Warning);
+
+            if (_settings.OcrShowWindow && r.Outcome != null)
+            {
+                new OcrResultForm(img, near, _settings, r.Outcome, r.Copied).Show();
+                handedOff = true;
+            }
+        }
+        finally
+        {
+            if (!handedOff) img.Dispose();
+            if (--_ocrBusy == 0)
+            {
+                _tray.Icon = AppIcon;
+                _tray.Text = idleText;
+            }
+        }
+    }
+
+    private void FillLanguageMenu(ToolStripMenuItem menu)
+    {
+        menu.DropDownItems.Clear();
+        if (OcrService.IsWindowsEngine(_settings.OcrEngine))
+        {
+            string langs;
+            try { langs = string.Join(", ", OcrService.AvailableLanguages); } catch { langs = "?"; }
+            menu.DropDownItems.Add(new ToolStripMenuItem("Windows OCR 언어: " + langs) { Enabled = false });
+            menu.DropDownItems.Add(new ToolStripMenuItem("(아래 PaddleOCR 언어는 PaddleOCR 엔진에서 사용)") { Enabled = false });
+            menu.DropDownItems.Add(new ToolStripSeparator());
+        }
+        var installed = OcrLanguages.Installed();
+        var active = OcrLanguages.Resolve(_settings.OcrLanguage);
+        if (installed.Count == 0)
+            menu.DropDownItems.Add(new ToolStripMenuItem("설치된 PaddleOCR 언어 없음") { Enabled = false });
+        foreach (var l in installed)
+        {
+            var id = l.Info.Id;
+            var item = new ToolStripMenuItem(l.Info.Name + (l.Bundled ? "  (기본)" : ""), null, (_, _) =>
+            {
+                _settings.OcrLanguage = id;
+                _settings.Save();
+            })
+            { Checked = active?.Info.Id == id };
+            menu.DropDownItems.Add(item);
+        }
+        menu.DropDownItems.Add(new ToolStripSeparator());
+        menu.DropDownItems.Add("언어 추가…", null, (_, _) => ShowLanguageDialog(add: true));
+        menu.DropDownItems.Add("언어 삭제…", null, (_, _) => ShowLanguageDialog(add: false));
+    }
+
+    private OcrLanguageDialog? _langDialog;
+
+    private void ShowLanguageDialog(bool add)
+    {
+        if (_langDialog != null) { _langDialog.Activate(); return; }
+        _langDialog = new OcrLanguageDialog(add, _settings);
+        _langDialog.FormClosed += (_, _) => _langDialog = null;
+        _langDialog.Show();
     }
 
     private void FullScreenCapture()
