@@ -13,6 +13,13 @@ internal static class Program
         int bi = Array.IndexOf(args, "--ocr-bench");
         if (bi >= 0) return RunOcrBench(args, bi);
         if (args.Contains("--lang-list") || args.Contains("--lang-add") || args.Contains("--lang-delete")) return RunLangTool(args);
+        if (args.Contains("--settings-test"))
+        {
+            // Prints the effective OCR settings after AppSettings.Load() (verifies engine migration).
+            var st = AppSettings.Load();
+            Emit(new System.Text.StringBuilder($"OcrEngine={st.OcrEngine} OcrLanguage={st.OcrLanguage} merge={st.OcrMergeParagraphs}{Environment.NewLine}"), null, 0);
+            return 0;
+        }
         int ct = Array.IndexOf(args, "--ocr-copy-test");
         if (ct >= 0) return RunOcrCopyTest(args, ct);
         int o = Array.IndexOf(args, "--ocr-test");

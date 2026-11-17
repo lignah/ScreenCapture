@@ -21,7 +21,7 @@ internal static class OcrRunner
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var outcome = await OcrService.RecognizeAsync(image, settings.OcrEngine, null, settings.OcrLanguage);
+            var outcome = await OcrService.RecognizeAsync(image, "paddle", null, settings.OcrLanguage);
             var text = outcome.Format(settings.OcrMergeParagraphs);
             if (text.Trim().Length == 0)
                 return new OcrRunResult(outcome, "", 0, false, null, sw.ElapsedMilliseconds);

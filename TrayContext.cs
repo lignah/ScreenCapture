@@ -51,23 +51,16 @@ internal sealed class TrayContext : ApplicationContext
         showWindow.CheckedChanged += (_, _) => { _settings.OcrShowWindow = showWindow.Checked; _settings.Save(); };
         var merge = new ToolStripMenuItem("문단으로 합치기") { CheckOnClick = true };
         merge.CheckedChanged += (_, _) => { _settings.OcrMergeParagraphs = merge.Checked; _settings.Save(); };
-        var paddle = new ToolStripMenuItem("PaddleOCR", null, (_, _) => { _settings.OcrEngine = "paddle"; _settings.Save(); });
-        var windows = new ToolStripMenuItem("Windows OCR", null, (_, _) => { _settings.OcrEngine = "windows"; _settings.Save(); });
-        var engine = new ToolStripMenuItem("OCR 엔진");
-        engine.DropDownItems.AddRange(new ToolStripItem[] { paddle, windows });
         var languages = new ToolStripMenuItem("OCR 언어");
         languages.DropDownItems.Add("…"); // filled on open
         var ocrSettings = new ToolStripMenuItem("OCR 설정");
-        ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { merge, showWindow, new ToolStripSeparator(), engine, languages });
+        ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { merge, showWindow, new ToolStripSeparator(), languages });
         menu.Items.Add(ocrSettings);
         // Settings can also change in the Settings dialog or the OCR window; refresh check marks on open.
         menu.Opening += (_, _) =>
         {
             showWindow.Checked = _settings.OcrShowWindow;
             merge.Checked = _settings.OcrMergeParagraphs;
-            bool win = OcrService.IsWindowsEngine(_settings.OcrEngine);
-            paddle.Checked = !win;
-            windows.Checked = win;
             FillLanguageMenu(languages);
         };
         menu.Items.Add("Open screenshots folder", null, (_, _) => OpenFolder());
@@ -232,14 +225,6 @@ internal sealed class TrayContext : ApplicationContext
     private void FillLanguageMenu(ToolStripMenuItem menu)
     {
         menu.DropDownItems.Clear();
-        if (OcrService.IsWindowsEngine(_settings.OcrEngine))
-        {
-            string langs;
-            try { langs = string.Join(", ", OcrService.AvailableLanguages); } catch { langs = "?"; }
-            menu.DropDownItems.Add(new ToolStripMenuItem("Windows OCR 언어: " + langs) { Enabled = false });
-            menu.DropDownItems.Add(new ToolStripMenuItem("(아래 PaddleOCR 언어는 PaddleOCR 엔진에서 사용)") { Enabled = false });
-            menu.DropDownItems.Add(new ToolStripSeparator());
-        }
         var installed = OcrLanguages.Installed();
         var active = OcrLanguages.Resolve(_settings.OcrLanguage);
         if (installed.Count == 0)

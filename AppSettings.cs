@@ -32,7 +32,8 @@ internal sealed class AppSettings
     /// <summary>Active PaddleOCR recognition language id (see <see cref="OcrLanguages.Catalog"/>).</summary>
     public string OcrLanguage { get; set; } = OcrLanguages.DefaultId;
 
-    /// <summary>"paddle" (default; falls back to Windows OCR) or "windows".</summary>
+    /// <summary>Always "paddle": PaddleOCR is the only engine (Windows OCR is an automatic internal fallback).
+    /// Older settings files with "windows" are migrated on load.</summary>
     public string OcrEngine { get; set; } = "paddle";
 
     [JsonIgnore]
@@ -45,7 +46,15 @@ internal sealed class AppSettings
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+            {
+                var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                if (s.OcrEngine != "paddle")
+                {
+                    s.OcrEngine = "paddle"; // engine choice was removed; migrate old "windows" setting
+                    s.Save();
+                }
+                return s;
+            }
         }
         catch (Exception ex)
         {
