@@ -13,6 +13,26 @@ internal static class Program
         int bi = Array.IndexOf(args, "--ocr-bench");
         if (bi >= 0) return RunOcrBench(args, bi);
         if (args.Contains("--lang-list") || args.Contains("--lang-add") || args.Contains("--lang-delete")) return RunLangTool(args);
+        int it = Array.IndexOf(args, "--icon-test");
+        if (it >= 0)
+        {
+            // Loads the embedded tray icons (normal + OCR busy) at several sizes and saves PNGs to <dir>.
+            string dir = Path.GetFullPath(args[it + 1]);
+            Directory.CreateDirectory(dir);
+            var sb = new System.Text.StringBuilder($"tray size={SystemInformation.SmallIconSize}{Environment.NewLine}");
+            foreach (var name in new[] { "app", "app_busy" })
+                foreach (int n in new[] { 16, 20, 24, 32, 48, 256 })
+                {
+                    using var stream = typeof(Program).Assembly.GetManifestResourceStream($"ScreenCapture.{name}.ico");
+                    if (stream == null) { sb.AppendLine($"{name}: resource missing"); break; }
+                    using var icon = new Icon(stream, n, n);
+                    using var bmp = icon.ToBitmap();
+                    bmp.Save(Path.Combine(dir, $"{name}_{n}.png"), System.Drawing.Imaging.ImageFormat.Png);
+                    sb.AppendLine($"{name} {n}: loaded {icon.Width}x{icon.Height}");
+                }
+            Emit(sb, null, 0);
+            return 0;
+        }
         if (args.Contains("--settings-test"))
         {
             // Prints the effective OCR settings after AppSettings.Load() (verifies engine migration).

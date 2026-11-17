@@ -169,7 +169,7 @@ internal sealed class TrayContext : ApplicationContext
     private int _ocrBusy;
     private static Icon? _busyIcon;
 
-    /// <summary>Tray icon with an orange dot, shown while OCR runs.</summary>
+    /// <summary>OCR-busy tray icon: same design with the crosshair and corner dot in amber (app_busy.ico).</summary>
     private static Icon BusyIcon
     {
         get
@@ -177,15 +177,8 @@ internal sealed class TrayContext : ApplicationContext
             if (_busyIcon != null) return _busyIcon;
             try
             {
-                using var bmp = AppIcon.ToBitmap();
-                using (var g = Graphics.FromImage(bmp))
-                {
-                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    int d = Math.Max(6, bmp.Width / 2);
-                    g.FillEllipse(Brushes.White, bmp.Width - d - 1, bmp.Height - d - 1, d + 1, d + 1);
-                    g.FillEllipse(Brushes.DarkOrange, bmp.Width - d, bmp.Height - d, d - 1, d - 1);
-                }
-                _busyIcon = Icon.FromHandle(bmp.GetHicon());
+                using var stream = typeof(TrayContext).Assembly.GetManifestResourceStream("ScreenCapture.app_busy.ico");
+                _busyIcon = stream != null ? new Icon(stream, SystemInformation.SmallIconSize) : AppIcon;
             }
             catch { _busyIcon = AppIcon; }
             return _busyIcon;

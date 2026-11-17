@@ -8,7 +8,7 @@ Clean-room implementation modeled on general screenshot-tool behavior.
 
 - **Ctrl+Shift+A** (default, changeable in Settings) or left-click the tray icon: region capture
 - Tray menu: Region capture, OCR capture (extract text), Full screen capture, OCR 설정 (문단으로 합치기 / 결과 창 표시 / OCR 언어: installed PaddleOCR languages, 언어 추가…, 언어 삭제…), Open screenshots folder, Settings..., Exit
-- OCR (toolbar button, Ctrl+T, tray OCR capture) has no window: the tray icon gets an orange dot and the tooltip says '인식 중…' while recognizing, then the text is copied to the clipboard silently (in the current 문단으로 합치기 mode); no notification is shown, failures go to error.log. Turn on 'OCR 설정 → 결과 창 표시' to also open the editable result window. Clipboard writes run on the UI (STA) thread and retry for ~1 s if another app holds the clipboard
+- OCR (toolbar button, Ctrl+T, tray OCR capture) has no window: the tray icon turns amber (crosshair + dot) and the tooltip says '인식 중…' while recognizing, then the text is copied to the clipboard silently (in the current 문단으로 합치기 mode); no notification is shown, failures go to error.log. Turn on 'OCR 설정 → 결과 창 표시' to also open the editable result window. Clipboard writes run on the UI (STA) thread and retry for ~1 s if another app holds the clipboard
 - OCR languages: Korean (PP-OCRv5) is bundled in models\. 언어 추가… downloads other official PaddleOCR recognition models (RapidAI/RapidOCR ModelScope repo, SHA-256 verified) into %LOCALAPPDATA%\ScreenCapture\models\<id>\: ch (Chinese + English + Japanese, v5), en, japan (v4), latin, cyrillic, eslav, el, arabic, devanagari, th, ta, te. 언어 삭제… removes downloaded ones (not the active one, not the bundled baseline, never the last one).
 
 ## Capture overlay
@@ -40,6 +40,7 @@ dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true 
 - `--lang-list` / `--lang-add <id>` / `--lang-delete <id>`: manage PaddleOCR languages from the command line; `--ocr-test` also accepts `--lang id`, test the locked-clipboard retry, restore the previous clipboard text
 - `--magnifier-selftest <png>`: render the magnifier at (200,200), check the #RRGGBB format, check Ctrl+C leaves the clipboard alone and plain C copies the color and closes the overlay; results in `<png>.info.txt`
 - `--settings-test`: print the effective OCR settings after loading (engine is always paddle)
+- `--icon-test <dir>`: load the embedded tray icons (normal + OCR busy) at several sizes and save PNGs
 - `--capture`: start and open the region overlay immediately
 
 ## OCR engines
@@ -55,3 +56,5 @@ Windows OCR uses installed language packs. Check with `Get-WindowsCapability -On
 ## No white flash
 Overlay, pin and OCR windows are created DWM-cloaked with show/hide transitions disabled, painted synchronously (frozen screenshot first), then uncloaked; WM_ERASEBKGND is suppressed.
 
+## Icon
+`app.ico` (exe + tray) and `app_busy.ico` (tray while OCR runs: crosshair and corner dot turn amber #FFB81C) are drawn by `tools/make-icon.py` (Python + Pillow, 8x supersampling; 16 and 20 px use a hand-placed 1-px crosshair, 24/32 use pixel-aligned 2-px strokes; sizes 16, 20, 24, 32, 40, 48, 64, 256). A faint light rim keeps the black square visible on a dark taskbar. Regenerate with `python3 tools/make-icon.py` in the project folder.

@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="app.ico" LogicalName="ScreenCapture.app.ico" />
+    <EmbeddedResource Include="app_busy.ico" LogicalName="ScreenCapture.app_busy.ico" />
   </ItemGroup>
 
   <!-- OnnxRuntime's NuGet package ships native import libraries (.lib) that are useless at runtime. -->
