@@ -176,6 +176,7 @@ internal sealed class OverlayForm : Form
             _current?.Dispose();
             foreach (var f in _fonts.Values) f.Dispose();
             _textBox?.Dispose();
+            _copiedTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -582,6 +583,10 @@ internal sealed class OverlayForm : Form
             case Keys.Control | Keys.T:
                 if (HasSel && _mode == Mode.Selected) Ocr();
                 return true;
+            case Keys.C:
+                // Plain C (no modifier) copies the color under the magnifier; Ctrl+C above copies the image.
+                if (ShowMagnifier) { CopyColorUnderCursor(); return true; }
+                break;
             case Keys.Left:
             case Keys.Right:
             case Keys.Up:
@@ -881,6 +886,13 @@ internal sealed class OverlayForm : Form
 
     /// <summary>Headless magnifier check used by --magnifier-selftest: paints the idle overlay with the cursor at
     /// <paramref name="at"/> (client coords) and returns the magnifier area plus the expected #RRGGBB text.</summary>
+    /// <summary>Test hook: route a key through the real shortcut handler.</summary>
+    internal bool SimulateKey(Keys keys)
+    {
+        var msg = new Message();
+        return ProcessCmdKey(ref msg, keys);
+    }
+
     internal Bitmap MagnifierSelfTest(Point at, out string hex)
     {
         _mode = Mode.Idle;
@@ -1226,7 +1238,44 @@ internal sealed class OverlayForm : Form
         float sw = 10 * s;
         using (var sb = new SolidBrush(px)) g.FillRectangle(sb, tx, ty + 18 * s, sw, sw);
         g.DrawRectangle(Pens.Gray, tx, ty + 18 * s, sw, sw);
-        g.DrawString(HexColor(px), f, Brushes.White, tx + sw + 4 * s, ty + 16 * s);
+        if (_copiedHex != null && Environment.TickCount64 < _copiedUntil)
+        {
+            var kf = GetFont("Malgun Gothic", 11 * s);
+            using var green = new SolidBrush(Color.FromArgb(120, 230, 140));
+            g.DrawString("복사됨 " + _copiedHex, kf, green, tx + sw + 4 * s, ty + 16 * s);
+        }
+        else g.DrawString(HexColor(px), f, Brushes.White, tx + sw + 4 * s, ty + 16 * s);
+    }
+
+    private string? _copiedHex;
+    private long _copiedUntil;
+    private System.Windows.Forms.Timer? _copiedTimer;
+
+    /// <summary>Plain C while the magnifier is visible: copy the pixel color under the cursor as #RRGGBB.
+    /// Returns the copied text, or null if nothing was copied. The overlay stays open.</summary>
+    private string? CopyColorUnderCursor()
+    {
+        if (!ShowMagnifier) return null;
+        var m = Clamp(_mouse);
+        string hex = HexColor(_src.GetPixel(m.X, m.Y));
+        var error = ClipboardText.TrySet(hex);
+        if (error != null) return null;
+        _copiedHex = hex;
+        _copiedUntil = Environment.TickCount64 + 1000;
+        _copiedTimer ??= new System.Windows.Forms.Timer { Interval = 1000 };
+        _copiedTimer.Stop();
+        _copiedTimer.Tick -= OnCopiedTimer;
+        _copiedTimer.Tick += OnCopiedTimer;
+        _copiedTimer.Start();
+        Invalidate(MagnifierRect());
+        return hex;
+    }
+
+    private void OnCopiedTimer(object? sender, EventArgs e)
+    {
+        _copiedTimer?.Stop();
+        _copiedHex = null;
+        if (!IsDisposed) Invalidate(MagnifierRect());
     }
 
     /// <summary>Color as uppercase #RRGGBB (alpha ignored).</summary>

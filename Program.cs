@@ -304,9 +304,37 @@ internal static class Program
         {
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
             using var form = new OverlayForm(bmp, vb, new List<Rectangle>(), new AppSettings());
-            using var crop = form.MagnifierSelfTest(new Point(200, 200), out var hex);
-            ImageOutput.Save(crop, path);
-            File.WriteAllText(path + ".info.txt", $"ok color={hex} format={(System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-F]{6}$") ? "PASS" : "FAIL")}{Environment.NewLine}");
+            var at = new Point(200, 200);
+            using (var crop = form.MagnifierSelfTest(at, out var hex))
+            {
+                ImageOutput.Save(crop, path);
+                var info = new System.Text.StringBuilder();
+                bool fmt = System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-F]{6}$");
+                info.AppendLine($"ok color={hex} format={(fmt ? "PASS" : "FAIL")}");
+
+                // Copy path: Ctrl+C must not copy the color (no selection -> nothing), plain C copies #RRGGBB.
+                string? previous = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+                const string sentinel = "__magnifier_test_sentinel__";
+                try
+                {
+                    ClipboardText.TrySet(sentinel);
+                    form.SimulateKey(Keys.Control | Keys.C);
+                    bool ctrlOk = Clipboard.GetText() == sentinel;
+                    bool handled = form.SimulateKey(Keys.C);
+                    string clip = Clipboard.GetText();
+                    bool cOk = handled && clip == hex && !form.IsDisposed;
+                    info.AppendLine($"ctrl+c leaves clipboard alone: {(ctrlOk ? "PASS" : "FAIL")}");
+                    info.AppendLine($"plain C copies color: {(cOk ? "PASS" : "FAIL")} clipboard={clip} overlayOpen={!form.IsDisposed}");
+                    using var after = form.MagnifierSelfTest(at, out _);
+                    ImageOutput.Save(after, Path.ChangeExtension(path, null) + "_copied.png");
+                }
+                finally
+                {
+                    if (previous != null) ClipboardText.TrySet(previous);
+                    else try { Clipboard.Clear(); } catch { }
+                }
+                File.WriteAllText(path + ".info.txt", info.ToString());
+            }
             return 0;
         }
         catch (Exception ex)

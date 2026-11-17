@@ -170,7 +170,6 @@ internal sealed class TrayContext : ApplicationContext
         {
             _overlay = null;
             ErrorLog.Write(ex);
-            _tray.ShowBalloonTip(4000, "Screen Capture", "Capture failed: " + ex.Message, ToolTipIcon.Error);
         }
     }
 
@@ -277,25 +276,19 @@ internal sealed class TrayContext : ApplicationContext
         {
             using var bmp = ScreenGrabber.CaptureVirtualScreen(out _);
             ImageOutput.CopyToClipboard(bmp);
-            string msg = $"Full screen ({bmp.Width} × {bmp.Height}) copied to clipboard.";
             if (_settings.FullScreenSavesFile)
-            {
                 _lastSavedPath = ImageOutput.SaveAuto(bmp, _settings.EffectiveFolder);
-                msg += $"\nSaved {Path.GetFileName(_lastSavedPath)} (click to open folder)";
-            }
-            _tray.ShowBalloonTip(3000, "Screen Capture", msg, ToolTipIcon.Info);
+            // Silent by design: no "copied/saved" notification; failures go to error.log only.
         }
         catch (Exception ex)
         {
             ErrorLog.Write(ex);
-            _tray.ShowBalloonTip(4000, "Screen Capture", "Full screen capture failed: " + ex.Message, ToolTipIcon.Error);
         }
     }
 
     private void OnSaved(string path)
     {
-        _lastSavedPath = path;
-        _tray.ShowBalloonTip(2500, "Screen Capture", $"Saved {Path.GetFileName(path)} (click to open folder)", ToolTipIcon.Info);
+        _lastSavedPath = path; // silent: no "Saved" notification
     }
 
     private void OpenFolder()
