@@ -1,5 +1,10 @@
+<div align="center">
+    <picture>
+        <img src="docs/icon.png" width="96" alt="icon">
+    </picture>
+</div>
+
 # 화면 캡처
-<img src="docs/icon.png" width="96" alt="icon">
 
 - WinForms (.NET 8), 트레이 상주
 - 영역, 창, 전체 화면 캡처 (다중 모니터, 고DPI 대응)
@@ -67,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File tools\get-models.ps1
 dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-`publish` 폴더에 `ScreenCapture.exe`와 `models`가 생기고, 그 `ScreenCapture.exe`를 실행하면 됨
+`publish` 폴더에 `ScreenCapture.exe`와 `models`가 생기고, 그 `ScreenCapture.exe`를 실행
 
 ## 설정, 라이선스
 
