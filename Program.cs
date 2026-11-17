@@ -47,10 +47,17 @@ internal static class Program
             sb.AppendLine("available: " + string.Join(", ", OcrService.AvailableLanguages));
             if (!OcrService.HasKorean) sb.AppendLine("note: " + OcrService.MissingKoreanHelp);
             using var bmp = new Bitmap(image);
-            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp)).GetAwaiter().GetResult();
+            int si = Array.IndexOf(args, "--scale");
+            int? scale = si >= 0 && si + 1 < args.Length && int.TryParse(args[si + 1], out var sv) ? sv : null;
+            var outcome = Task.Run(() => OcrService.RecognizeAsync(bmp, scale)).GetAwaiter().GetResult();
             sb.AppendLine($"engine: {outcome.LanguageTag}  scale: {outcome.Scale}x  lines: {outcome.LineCount}  image: {bmp.Width}x{bmp.Height}");
-            sb.AppendLine("----- text -----");
+            if (args.Contains("--boxes"))
+                foreach (var l in outcome.Lines)
+                    sb.AppendLine($"[L={l.Box.Left:0} R={l.Box.Right:0} T={l.Box.Top:0} B={l.Box.Bottom:0} cw={l.CharWidth:0.0} w0={l.FirstWordWidth:0}] {l.Text}");
+            sb.AppendLine("----- 원본 줄바꿈 (raw) -----");
             sb.AppendLine(outcome.Text);
+            sb.AppendLine("----- 문단으로 합치기 (merged) -----");
+            sb.AppendLine(outcome.MergedText);
         }
         catch (Exception ex)
         {

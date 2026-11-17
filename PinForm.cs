@@ -31,6 +31,7 @@ internal sealed class PinForm : Form
         StartPosition = FormStartPosition.Manual;
         AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
+        BackColor = Color.Black;
         KeyPreview = true;
         Bounds = new Rectangle(screenLocation.X - B, screenLocation.Y - B, img.Width + 2 * B, img.Height + 2 * B);
 
@@ -61,19 +62,33 @@ internal sealed class PinForm : Form
         }
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        NoFlash.Prepare(Handle);
+    }
+
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
         var b = Bounds;
         Native.SetWindowPos(Handle, Native.HWND_TOPMOST, b.X, b.Y, b.Width, b.Height, Native.SWP_SHOWWINDOW);
+        NoFlash.Reveal(this);
         Activate();
     }
+
+    protected override void OnPaintBackground(PaintEventArgs e) { } // image covers the whole client area
 
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == Native.WM_DPICHANGED)
         {
             m.Result = IntPtr.Zero; // keep 1:1 pixels when dragged across monitors
+            return;
+        }
+        if (m.Msg == NoFlash.WM_ERASEBKGND)
+        {
+            m.Result = (IntPtr)1;
             return;
         }
         base.WndProc(ref m);

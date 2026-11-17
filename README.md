@@ -16,7 +16,7 @@ Clean-room implementation modeled on general screenshot-tool behavior.
 - Esc cancels; right-click clears the selection (or cancels when nothing is selected)
 - Toolbar: rectangle, ellipse, arrow, pen, text, mosaic, undo, 6 colors, 3 thicknesses, pin, save, cancel, copy
   (click a tool again to go back to move/resize mode)
-- OCR button / Ctrl+T: extract text from the selection (offline Windows.Media.Ocr, Korean preferred, then user-profile language, then English). Result window is editable and the text is auto-copied; line breaks are kept; small selections are upscaled 2-3x
+- OCR button / Ctrl+T: extract text from the selection (offline Windows.Media.Ocr, Korean preferred, then user-profile language, then English). Result window is editable and the text is auto-copied; small selections are upscaled 2-3x. The "문단으로 합치기" checkbox (default on, remembered) joins wrapped lines into paragraphs using OCR line boxes (right edge vs column edge, indentation, list markers, Korean particle/ending heuristics); off = 원본 줄바꿈
 - Enter / double-click / Ctrl+C: copy to clipboard. Ctrl+S: save. Ctrl+Z: undo
 - Pinned image: drag to move, mouse wheel to zoom, Esc or double-click to close, right-click for copy/save
 
@@ -31,9 +31,13 @@ dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true 
 ## Hidden test flags
 - `--fullscreen-test <path>`: capture full virtual screen to PNG and exit (writes `<path>.info.txt`)
 - `--overlay-selftest <path>`: render a sample selection with every annotation type to PNG and exit
-- `--ocr-test <image> [--out file]`: print available OCR languages + recognized text to stdout and `<image>.ocr.txt`)
+- `--ocr-test <image> [--out file]`: print available OCR languages + recognized text (raw and merged; `--boxes` adds line boxes, `--scale N` forces upscale) to stdout and `<image>.ocr.txt`)
 - `--capture`: start and open the region overlay immediately
 
 ## OCR languages
 Windows OCR uses installed language packs. Check with `Get-WindowsCapability -Online -Name 'Language.OCR*'` (admin). Install e.g. Korean: `Add-WindowsCapability -Online -Name 'Language.OCR~~~ko-KR~0.0.1.0'`, English: `Language.OCR~~~en-US~0.0.1.0`.
+
+
+## No white flash
+Overlay, pin and OCR windows are created DWM-cloaked with show/hide transitions disabled, painted synchronously (frozen screenshot first), then uncloaked; WM_ERASEBKGND is suppressed.
 

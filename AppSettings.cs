@@ -23,6 +23,9 @@ internal sealed class AppSettings
     /// <summary>Full-screen capture always copies; this also writes a PNG.</summary>
     public bool FullScreenSavesFile { get; set; } = true;
 
+    /// <summary>OCR result window: join wrapped lines into paragraphs (true) or keep original line breaks.</summary>
+    public bool OcrMergeParagraphs { get; set; } = true;
+
     [JsonIgnore]
     public string EffectiveFolder => string.IsNullOrWhiteSpace(SaveFolder) ? ImageOutput.DefaultFolder : SaveFolder;
 

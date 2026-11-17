@@ -1,7 +1,6 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Text;
 using Windows.Media.Ocr;
 using WinLanguage = Windows.Globalization.Language;
 using WinBitmapPixelFormat = Windows.Graphics.Imaging.BitmapPixelFormat;
@@ -10,7 +9,13 @@ using WinSoftwareBitmap = Windows.Graphics.Imaging.SoftwareBitmap;
 
 namespace ScreenCapture;
 
-internal sealed record OcrOutcome(string Text, string LanguageTag, int Scale, int LineCount);
+internal sealed record OcrOutcome(IReadOnlyList<OcrLine> Lines, string LanguageTag, int Scale)
+{
+    public int LineCount => Lines.Count;
+    public string Text => OcrTextLayout.Raw(Lines);
+    public string MergedText => OcrTextLayout.Merge(Lines);
+    public string Format(bool merge) => merge ? MergedText : Text;
+}
 
 /// <summary>Offline text recognition through the built-in Windows.Media.Ocr engine.</summary>
 internal static class OcrService
@@ -60,19 +65,19 @@ internal static class OcrService
         return list;
     }
 
-    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source)
+    public static async Task<OcrOutcome> RecognizeAsync(Bitmap source, int? forceScale = null)
     {
         var engines = EnginesInPreferenceOrder();
         if (engines.Count == 0)
             throw new InvalidOperationException("No Windows OCR language is installed on this PC.");
 
-        int scale = ChooseScale(source.Width, source.Height);
+        int scale = forceScale is > 0 ? forceScale.Value : ChooseScale(source.Width, source.Height);
         using var prepared = Prepare(source, scale);
         using var sb = ToSoftwareBitmap(prepared);
 
         var first = engines[0];
         var result = await first.RecognizeAsync(sb);
-        var outcome = new OcrOutcome(FormatText(result), first.RecognizerLanguage.LanguageTag, scale, result.Lines.Count);
+        var outcome = new OcrOutcome(ToLines(result), first.RecognizerLanguage.LanguageTag, scale);
 
         // A Korean engine on purely Latin text can drop spaces; if nothing Hangul came out, prefer English.
         if (IsKoreanTag(outcome.LanguageTag) && !ContainsHangul(outcome.Text))
@@ -81,9 +86,8 @@ internal static class OcrService
             if (en != null)
             {
                 var r2 = await en.RecognizeAsync(sb);
-                var text2 = FormatText(r2);
-                if (text2.Trim().Length >= outcome.Text.Trim().Length * 0.8)
-                    outcome = new OcrOutcome(text2, en.RecognizerLanguage.LanguageTag, scale, r2.Lines.Count);
+                var alt = new OcrOutcome(ToLines(r2), en.RecognizerLanguage.LanguageTag, scale);
+                if (alt.Text.Trim().Length >= outcome.Text.Trim().Length * 0.8) outcome = alt;
             }
         }
         return outcome;
@@ -137,30 +141,24 @@ internal static class OcrService
         }
     }
 
-    /// <summary>One output line per OCR line; a blank line where the vertical gap suggests a paragraph break.</summary>
-    private static string FormatText(OcrResult result)
+    private static List<OcrLine> ToLines(OcrResult result)
     {
-        var sb = new StringBuilder();
-        double prevBottom = double.NaN, prevHeight = 0;
+        var lines = new List<OcrLine>();
         foreach (var line in result.Lines)
         {
-            double top = double.MaxValue, bottom = double.MinValue;
+            if (line.Words.Count == 0) continue;
+            double l = double.MaxValue, t = double.MaxValue, r = double.MinValue, b = double.MinValue;
             foreach (var w in line.Words)
             {
-                top = Math.Min(top, w.BoundingRect.Y);
-                bottom = Math.Max(bottom, w.BoundingRect.Y + w.BoundingRect.Height);
+                var br = w.BoundingRect;
+                l = Math.Min(l, br.X);
+                t = Math.Min(t, br.Y);
+                r = Math.Max(r, br.X + br.Width);
+                b = Math.Max(b, br.Y + br.Height);
             }
-            double height = bottom - top;
-            if (sb.Length > 0)
-            {
-                sb.Append("\r\n");
-                if (!double.IsNaN(prevBottom) && top - prevBottom > Math.Max(height, prevHeight) * 1.2)
-                    sb.Append("\r\n");
-            }
-            sb.Append(line.Text);
-            prevBottom = bottom;
-            prevHeight = height;
+            lines.Add(new OcrLine(line.Text, RectangleF.FromLTRB((float)l, (float)t, (float)r, (float)b),
+                (float)line.Words[0].BoundingRect.Width));
         }
-        return sb.ToString();
+        return lines;
     }
 }

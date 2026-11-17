@@ -131,6 +131,7 @@ internal sealed class OverlayForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        NoFlash.Prepare(Handle);
         PlaceExactly();
     }
 
@@ -143,7 +144,7 @@ internal sealed class OverlayForm : Form
         _mouse = PointToClient(Cursor.Position);
         _hover = WindowAt(Clamp(_mouse));
         _lastDirty = Rectangle.Empty;
-        Invalidate();
+        NoFlash.Reveal(this); // first visible frame is the frozen screenshot, never a blank/white window
     }
 
     private void PlaceExactly() =>
@@ -155,6 +156,11 @@ internal sealed class OverlayForm : Form
         if (m.Msg == Native.WM_DPICHANGED)
         {
             m.Result = IntPtr.Zero;
+            return;
+        }
+        if (m.Msg == NoFlash.WM_ERASEBKGND)
+        {
+            m.Result = (IntPtr)1; // everything is painted in OnPaint
             return;
         }
         base.WndProc(ref m);

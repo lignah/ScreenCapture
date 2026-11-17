@@ -131,7 +131,7 @@ internal sealed class TrayContext : ApplicationContext
             var windows = ScreenGrabber.GetWindowRects();
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
             var overlay = new OverlayForm(bmp, vb, windows, _settings) { OcrMode = ocrMode };
-            overlay.OcrRequested += (img, near) => new OcrResultForm(img, near).Show();
+            overlay.OcrRequested += (img, near) => new OcrResultForm(img, near, _settings).Show();
             overlay.PinRequested += (img, loc) =>
             {
                 var pin = new PinForm(img, loc, _settings);
