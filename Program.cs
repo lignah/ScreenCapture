@@ -12,6 +12,8 @@ internal static class Program
         // Hidden test hooks.
         int bi = Array.IndexOf(args, "--ocr-bench");
         if (bi >= 0) return RunOcrBench(args, bi);
+        int ct = Array.IndexOf(args, "--ocr-copy-test");
+        if (ct >= 0) return RunOcrCopyTest(args, ct);
         int o = Array.IndexOf(args, "--ocr-test");
         if (o >= 0) return RunOcrTest(args, o);
         int i = Array.IndexOf(args, "--fullscreen-test");
@@ -77,6 +79,110 @@ internal static class Program
         {
             using var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
             stdout.Write(text);
+        }
+        catch { }
+        return code;
+    }
+
+    private static class ClipNative
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        public static extern bool OpenClipboard(IntPtr owner);
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        public static extern bool CloseClipboard();
+    }
+
+    private static string Arg(string[] args, string name, string fallback)
+    {
+        int i = Array.IndexOf(args, name);
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : fallback;
+    }
+
+    /// <summary>
+    /// --ocr-copy-test &lt;image&gt; [--engine paddle|windows] [--merge on|off] [--autocopy on|off] [--lock-ms N]:
+    /// runs the real OCR result window (async OCR, auto-copy on the UI thread), then reads the clipboard back and
+    /// compares it to the window text. Then checks the retry path while another thread holds the clipboard open.
+    /// The previous clipboard text is restored afterwards. Output: stdout + &lt;image&gt;.copytest.txt.
+    /// </summary>
+    private static int RunOcrCopyTest(string[] args, int index)
+    {
+        string image = Path.GetFullPath(args[index + 1]);
+        var settings = new AppSettings
+        {
+            OcrEngine = Arg(args, "--engine", "paddle"),
+            OcrMergeParagraphs = Arg(args, "--merge", "on") != "off",
+            OcrAutoCopy = Arg(args, "--autocopy", "on") != "off",
+        };
+        int lockMs = int.TryParse(Arg(args, "--lock-ms", "400"), out var lm) ? lm : 400;
+        var sb = new System.Text.StringBuilder();
+        int code = 0;
+        string? previous = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+        const string sentinel = "__ocr_copy_test_sentinel__";
+        try
+        {
+            Clipboard.SetText(sentinel);
+            sb.AppendLine($"engine={settings.OcrEngine} merge={settings.OcrMergeParagraphs} autocopy={settings.OcrAutoCopy} thread={Thread.CurrentThread.GetApartmentState()}");
+            string shown = "";
+            bool copied = false, done = false;
+            var bmp = new Bitmap(image);
+            var form = new OcrResultForm(bmp, new Point(100, 100), settings);
+            form.Completed += (text, c) =>
+            {
+                shown = text;
+                copied = c;
+                done = true;
+                sb.AppendLine($"completed on UI thread: {!form.InvokeRequired}, apartment {Thread.CurrentThread.GetApartmentState()}");
+                form.BeginInvoke(form.Close);
+            };
+            var timeout = new System.Windows.Forms.Timer { Interval = 60000 };
+            timeout.Tick += (_, _) => { timeout.Stop(); form.Close(); };
+            timeout.Start();
+            Application.Run(form);
+            timeout.Dispose();
+            string clip = Clipboard.ContainsText() ? Clipboard.GetText() : "";
+            bool expectCopy = settings.OcrAutoCopy && shown.Length > 0;
+            bool ok = done && (expectCopy ? copied && clip == shown : clip == sentinel);
+            sb.AppendLine($"completed={done} copied={copied} clipboardLines={clip.Split('\n').Length} windowLines={shown.Split('\n').Length}");
+            sb.AppendLine("auto-copy check: " + (ok ? "PASS" : "FAIL") + (expectCopy ? " (clipboard == window text)" : " (clipboard untouched)"));
+            if (!ok) code = 1;
+            sb.AppendLine("----- clipboard -----");
+            sb.AppendLine(clip);
+
+            // Retry path: another thread holds the clipboard open for lockMs.
+            using var opened = new ManualResetEventSlim();
+            var holder = new Thread(() =>
+            {
+                bool got = ClipNative.OpenClipboard(IntPtr.Zero);
+                opened.Set();
+                Thread.Sleep(lockMs);
+                if (got) ClipNative.CloseClipboard();
+            });
+            holder.Start();
+            opened.Wait();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var err = ClipboardText.TrySet(shown.Length > 0 ? shown : "lock-test");
+            sw.Stop();
+            holder.Join();
+            bool lockOk = err == null && sw.ElapsedMilliseconds >= lockMs - 60;
+            sb.AppendLine($"locked-clipboard retry ({lockMs} ms lock): {(lockOk ? "PASS" : "FAIL")} after {sw.ElapsedMilliseconds} ms" + (err != null ? " error " + err : ""));
+            if (!lockOk) code = 1;
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("error: " + ex);
+            code = 1;
+        }
+        finally
+        {
+            if (previous != null) ClipboardText.TrySet(previous);
+            else try { Clipboard.Clear(); } catch { }
+        }
+        var outText = sb.ToString();
+        try { File.WriteAllText(image + ".copytest.txt", outText, new System.Text.UTF8Encoding(false)); } catch { }
+        try
+        {
+            using var stdout = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
+            stdout.Write(outText);
         }
         catch { }
         return code;

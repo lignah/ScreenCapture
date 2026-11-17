@@ -47,6 +47,26 @@ internal sealed class TrayContext : ApplicationContext
         menu.Items.Add("OCR capture (extract text)", null, (_, _) => RunLater(180, () => StartRegionCapture(ocrMode: true)));
         menu.Items.Add("Full screen capture", null, (_, _) => RunLater(250, FullScreenCapture));
         menu.Items.Add(new ToolStripSeparator());
+        var autoCopy = new ToolStripMenuItem("OCR 결과 자동 복사") { CheckOnClick = true };
+        autoCopy.CheckedChanged += (_, _) => { _settings.OcrAutoCopy = autoCopy.Checked; _settings.Save(); };
+        var merge = new ToolStripMenuItem("문단으로 합치기") { CheckOnClick = true };
+        merge.CheckedChanged += (_, _) => { _settings.OcrMergeParagraphs = merge.Checked; _settings.Save(); };
+        var paddle = new ToolStripMenuItem("PaddleOCR", null, (_, _) => { _settings.OcrEngine = "paddle"; _settings.Save(); });
+        var windows = new ToolStripMenuItem("Windows OCR", null, (_, _) => { _settings.OcrEngine = "windows"; _settings.Save(); });
+        var engine = new ToolStripMenuItem("OCR 엔진");
+        engine.DropDownItems.AddRange(new ToolStripItem[] { paddle, windows });
+        var ocrSettings = new ToolStripMenuItem("OCR 설정");
+        ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { autoCopy, merge, new ToolStripSeparator(), engine });
+        menu.Items.Add(ocrSettings);
+        // Settings can also change in the Settings dialog or the OCR window; refresh check marks on open.
+        menu.Opening += (_, _) =>
+        {
+            autoCopy.Checked = _settings.OcrAutoCopy;
+            merge.Checked = _settings.OcrMergeParagraphs;
+            bool win = OcrService.IsWindowsEngine(_settings.OcrEngine);
+            paddle.Checked = !win;
+            windows.Checked = win;
+        };
         menu.Items.Add("Open screenshots folder", null, (_, _) => OpenFolder());
         menu.Items.Add("Settings...", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
@@ -131,7 +151,15 @@ internal sealed class TrayContext : ApplicationContext
             var windows = ScreenGrabber.GetWindowRects();
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
             var overlay = new OverlayForm(bmp, vb, windows, _settings) { OcrMode = ocrMode };
-            overlay.OcrRequested += (img, near) => new OcrResultForm(img, near, _settings).Show();
+            overlay.OcrRequested += (img, near) =>
+            {
+                var form = new OcrResultForm(img, near, _settings);
+                form.Completed += (_, copied) =>
+                {
+                    if (copied) _tray.ShowBalloonTip(1500, "Screen Capture", "OCR 텍스트 " + OcrResultForm.CopiedMessage, ToolTipIcon.None);
+                };
+                form.Show();
+            };
             overlay.PinRequested += (img, loc) =>
             {
                 var pin = new PinForm(img, loc, _settings);

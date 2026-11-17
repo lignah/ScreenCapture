@@ -11,6 +11,11 @@ internal sealed class OcrResultForm : Form
     private readonly AppSettings _settings;
     private OcrOutcome? _outcome;
 
+    /// <summary>Raised on the UI thread when recognition ends: (text shown, copied to clipboard).</summary>
+    public event Action<string, bool>? Completed;
+
+    public const string CopiedMessage = "클립보드에 복사됨";
+
     public OcrResultForm(Bitmap image, Point nearScreen, AppSettings settings)
     {
         _image = image;
@@ -94,8 +99,8 @@ internal sealed class OcrResultForm : Form
         _settings.Save();
         if (_outcome == null || _outcome.LineCount == 0) return;
         _text.Text = _outcome.Format(_merge.Checked);
-        CopyText(false);
-        _status.Text = Status(_outcome) + " · copied";
+        if (_settings.OcrAutoCopy) CopyText(false);
+        else _status.Text = Status(_outcome);
     }
 
     private string _elapsed = "";
@@ -123,11 +128,14 @@ internal sealed class OcrResultForm : Form
             if (outcome.Text.Trim().Length == 0)
             {
                 _status.Text = $"No text found ({outcome.LanguageTag}{_elapsed})" + (outcome.Note != null ? $" · {outcome.Note}" : "");
+                Completed?.Invoke("", false);
                 return;
             }
             _copy.Enabled = true;
-            CopyText(false);
-            _status.Text = Status(outcome) + " · copied";
+            bool copied = false;
+            if (_settings.OcrAutoCopy) copied = CopyText(false);
+            else _status.Text = Status(outcome);
+            Completed?.Invoke(_text.Text, copied);
         }
         catch (Exception ex)
         {
@@ -135,23 +143,23 @@ internal sealed class OcrResultForm : Form
             if (IsDisposed) return;
             _text.Text = "OCR failed: " + ex.Message;
             _status.Text = "Error";
+            Completed?.Invoke("", false);
         }
     }
 
-    private void CopyText(bool announce)
+    /// <summary>Copies the selection (manual Copy) or the whole text; runs on the STA UI thread.</summary>
+    private bool CopyText(bool manual)
     {
-        var s = _text.SelectionLength > 0 ? _text.SelectedText : _text.Text;
-        if (string.IsNullOrEmpty(s)) return;
-        try
+        var s = manual && _text.SelectionLength > 0 ? _text.SelectedText : _text.Text;
+        if (string.IsNullOrEmpty(s)) return false;
+        var error = ClipboardText.TrySet(s);
+        if (error != null)
         {
-            Clipboard.SetText(s);
-            if (announce) _status.Text = "Copied to clipboard";
+            _status.Text = "복사 실패: " + error;
+            return false;
         }
-        catch (Exception ex)
-        {
-            ErrorLog.Write(ex);
-            _status.Text = "Could not copy: " + ex.Message;
-        }
+        _status.Text = (_outcome != null ? Status(_outcome) + " · " : "") + CopiedMessage;
+        return true;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

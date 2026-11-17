@@ -7,7 +7,8 @@ Clean-room implementation modeled on general screenshot-tool behavior.
 `publish\ScreenCapture.exe` (self-contained, no .NET install needed). It lives in the system tray.
 
 - **Ctrl+Shift+A** (default, changeable in Settings) or left-click the tray icon: region capture
-- Tray menu: Region capture, OCR capture (extract text), Full screen capture, Open screenshots folder, Settings..., Exit
+- Tray menu: Region capture, OCR capture (extract text), Full screen capture, OCR 설정 (OCR 결과 자동 복사 / 문단으로 합치기 / OCR 엔진: PaddleOCR or Windows OCR), Open screenshots folder, Settings..., Exit
+- OCR (toolbar button, Ctrl+T, tray OCR capture) copies the recognized text to the clipboard automatically when 'OCR 결과 자동 복사' is on (default), in the current 문단으로 합치기 mode; the result window and a short tray notification show '클립보드에 복사됨'. Clipboard writes run on the UI (STA) thread and retry for ~1 s if another app holds the clipboard
 
 ## Capture overlay
 - Screen is frozen and dimmed across all monitors; magnifier shows cursor coordinates and pixel RGB
@@ -33,6 +34,7 @@ dotnet publish ScreenCapture.csproj -c Release -r win-x64 --self-contained true 
 - `--overlay-selftest <path>`: render a sample selection with every annotation type to PNG and exit
 - `--ocr-test <image> [--out file] [--engine paddle|windows]`: print available OCR languages + recognized text (raw and merged; `--boxes` adds line boxes, `--scale N` forces upscale) to stdout and `<image>.ocr.txt`)
 - `--ocr-bench <image> [--engine paddle|windows] [--runs N]`: print memory before / peak during / after each OCR run plus latency (also `<image>.bench.txt`)
+- `--ocr-copy-test <image> [--engine paddle|windows] [--merge on|off] [--autocopy on|off] [--lock-ms N]`: run the real OCR window, verify the clipboard equals the window text (or is untouched with autocopy off), test the locked-clipboard retry, restore the previous clipboard text
 - `--capture`: start and open the region overlay immediately
 
 ## OCR engines
