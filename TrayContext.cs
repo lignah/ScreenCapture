@@ -44,10 +44,10 @@ internal sealed class TrayContext : ApplicationContext
         merge.CheckedChanged += (_, _) => { _settings.OcrMergeParagraphs = merge.Checked; _settings.Save(); };
         var languages = new ToolStripMenuItem("OCR 언어");
         languages.DropDownItems.Add("…"); // filled on open
-        var ocrSettings = new ToolStripMenuItem("OCR 설정");
+        var ocrSettings = new ToolStripMenuItem("OCR Settings");
         ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { merge, showWindow, new ToolStripSeparator(), languages });
         menu.Items.Add(ocrSettings);
-        var thickness = new ToolStripMenuItem("기본 굵기");
+        var thickness = new ToolStripMenuItem("Default Thickness");
         var thickItems = new[] { "Thin", "Medium", "Thick" }.Select((name, i) =>
             new ToolStripMenuItem(name, null, (_, _) => { _settings.DefaultThickness = i; _settings.Save(); })).ToArray();
         thickness.DropDownItems.AddRange(thickItems);
