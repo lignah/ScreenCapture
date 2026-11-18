@@ -7,7 +7,21 @@ internal static class HotkeyParser
     public static readonly string[] Presets =
     {
         "Ctrl+Shift+A", "Ctrl+Alt+A", "Ctrl+Shift+S", "Ctrl+Shift+X", "Alt+Shift+A", "Ctrl+Shift+F1", "PrintScreen",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
     };
+
+    /// <summary>Canonical spelling, e.g. "ctrl+shift+a" -> "Ctrl+Shift+A", "f5" -> "F5". Unparsable text is returned trimmed.</summary>
+    public static string Normalize(string? text)
+    {
+        if (!TryParse(text, out uint mods, out Keys key)) return text?.Trim() ?? "";
+        var parts = new List<string>();
+        if ((mods & Native.MOD_CONTROL) != 0) parts.Add("Ctrl");
+        if ((mods & Native.MOD_ALT) != 0) parts.Add("Alt");
+        if ((mods & Native.MOD_SHIFT) != 0) parts.Add("Shift");
+        if ((mods & Native.MOD_WIN) != 0) parts.Add("Win");
+        parts.Add(key is >= Keys.D0 and <= Keys.D9 ? ((char)('0' + (key - Keys.D0))).ToString() : key.ToString());
+        return string.Join("+", parts);
+    }
 
     /// <summary>Parses text like "Ctrl+Shift+A" into RegisterHotKey modifiers and a virtual key.</summary>
     public static bool TryParse(string? text, out uint modifiers, out Keys key)

@@ -6,7 +6,7 @@ internal sealed class SettingsForm : Form
     private readonly TextBox _folder = new() { Width = 340, Anchor = AnchorStyles.Left | AnchorStyles.Right };
     private readonly CheckBox _ask = new() { Text = "Ask where to save (Save As dialog)", AutoSize = true };
     private readonly CheckBox _saveOnCopy = new() { Text = "Also save a PNG to the folder when copying", AutoSize = true };
-    private readonly ComboBox _hotkey = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 200, Anchor = AnchorStyles.Left };
+    private readonly ComboBox _hotkey = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 200, MaxDropDownItems = 20, Anchor = AnchorStyles.Left };
     private readonly CheckBox _startup = new() { Text = "Start with Windows", AutoSize = true };
 
     public SettingsForm(AppSettings settings, string hotkeyStatus)
@@ -87,7 +87,7 @@ internal sealed class SettingsForm : Form
         {
             if (!HotkeyParser.TryParse(_hotkey.Text, out _, out _))
             {
-                MessageBox.Show(this, "Hotkey must look like Ctrl+Shift+A (modifiers: Ctrl, Alt, Shift, Win).",
+                MessageBox.Show(this, "Hotkey must be F1-F12 or look like Ctrl+Shift+A (modifiers: Ctrl, Alt, Shift, Win).",
                     "Screen Capture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 DialogResult = DialogResult.None;
                 return;
@@ -101,7 +101,7 @@ internal sealed class SettingsForm : Form
     private void Apply()
     {
         _settings.SaveFolder = _folder.Text.Trim();
-        _settings.Hotkey = _hotkey.Text.Trim();
+        _settings.Hotkey = HotkeyParser.Normalize(_hotkey.Text);
         _settings.AskWhereToSave = _ask.Checked;
         _settings.SaveOnCopy = _saveOnCopy.Checked;
         _settings.Save();
