@@ -14,6 +14,9 @@ internal sealed class AppSettings
     /// <summary>Global hotkey for region capture, e.g. "Ctrl+Shift+A".</summary>
     public string Hotkey { get; set; } = HotkeyParser.Default;
 
+    /// <summary>Single key (F1-F11) that copies + saves the whole screen at once; empty = none (default).</summary>
+    public string FullscreenHotkey { get; set; } = "";
+
     /// <summary>Show a Save As dialog; otherwise save straight to <see cref="SaveFolder"/>.</summary>
     public bool AskWhereToSave { get; set; } = true;
 

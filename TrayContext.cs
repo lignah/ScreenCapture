@@ -5,6 +5,7 @@ namespace ScreenCapture;
 internal sealed class TrayContext : ApplicationContext
 {
     private const int HotkeyId = 0xA11;
+    private const int FullHotkeyId = 0xA12;
 
     private static Icon? _appIcon;
 
@@ -13,6 +14,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly HotkeyWindow _hotkeyWindow = new();
     private bool _hotkeyOk;
     private string _hotkeyText = HotkeyParser.Default;
+    private bool _fullOk;
+    private string _fullText = "";
     private OverlayForm? _overlay;
     private SettingsForm? _settingsForm;
     private string? _lastSavedPath;
@@ -81,6 +84,7 @@ internal sealed class TrayContext : ApplicationContext
         _hotkeyWindow.HotkeyPressed += id =>
         {
             if (id == HotkeyId) StartRegionCapture();
+            else if (id == FullHotkeyId) FullScreenCapture();
         };
         RegisterHotkey();
         try { AppSettings.RefreshStartupPath(); } catch (Exception ex) { ErrorLog.Write(ex); }
@@ -88,9 +92,20 @@ internal sealed class TrayContext : ApplicationContext
         if (startCapture) RunLater(100, StartRegionCapture);
     }
 
-    private string HotkeyStatus => _hotkeyOk
-        ? $"Current hotkey {_hotkeyText} is active (region capture)."
-        : $"Current hotkey {_hotkeyText} could not be registered (in use by another app?). Pick another one above.";
+    private string HotkeyStatus
+    {
+        get
+        {
+            var s = _hotkeyOk
+                ? $"Current hotkey {_hotkeyText} is active (region capture)."
+                : $"Current hotkey {_hotkeyText} could not be registered (in use by another app?). Pick another one above.";
+            if (_fullText.Length > 0)
+                s += Environment.NewLine + (_fullOk
+                    ? $"Full screen hotkey {_fullText} is active."
+                    : $"Full screen hotkey {_fullText} could not be registered (in use by another app?).");
+            return s;
+        }
+    }
 
     private void RegisterHotkey()
     {
@@ -111,6 +126,26 @@ internal sealed class TrayContext : ApplicationContext
                 $"{_hotkeyText} is already used by another app. Choose another hotkey in Settings, or click the tray icon to capture.",
                 ToolTipIcon.Warning);
         }
+        RegisterFullscreenHotkey();
+    }
+
+    /// <summary>Optional single-key (F1-F11) full-screen hotkey; nothing is registered when it is empty.</summary>
+    private void RegisterFullscreenHotkey()
+    {
+        if (_fullOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, FullHotkeyId);
+        _fullOk = false;
+        _fullText = (_settings.FullscreenHotkey ?? "").Trim();
+        if (_fullText.Length == 0 || _fullText.Equals(HotkeyParser.None, StringComparison.OrdinalIgnoreCase))
+        {
+            _fullText = "";
+            return;
+        }
+        if (HotkeyParser.TryParse(_fullText, out uint mods, out Keys key))
+            _fullOk = Native.RegisterHotKey(_hotkeyWindow.Handle, FullHotkeyId, mods | Native.MOD_NOREPEAT, (uint)key);
+        if (!_fullOk)
+            _tray.ShowBalloonTip(6000, "Screen Capture",
+                $"Full screen hotkey {_fullText} is already used by another app. Choose another one in Settings.",
+                ToolTipIcon.Warning);
     }
 
     private static string Truncate(string s) => s.Length <= 63 ? s : s[..63];
@@ -240,6 +275,22 @@ internal sealed class TrayContext : ApplicationContext
         _langDialog.Show();
     }
 
+    /// <summary>Full-screen hotkey: copy every monitor to the clipboard and save a PNG to the screenshots folder, silently.</summary>
+    private void FullScreenCapture()
+    {
+        if (_overlay != null) return; // region capture is open; don't grab its overlay
+        try
+        {
+            using var bmp = ScreenGrabber.CaptureVirtualScreen(out _);
+            ImageOutput.CopyToClipboard(bmp);
+            _lastSavedPath = ImageOutput.SaveAuto(bmp, _settings.EffectiveFolder);
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex); // silent by design: no notification
+        }
+    }
+
     private void OnSaved(string path)
     {
         _lastSavedPath = path; // silent: no "Saved" notification
@@ -285,6 +336,7 @@ internal sealed class TrayContext : ApplicationContext
     private void ExitApp()
     {
         if (_hotkeyOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);
+        if (_fullOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, FullHotkeyId);
         _hotkeyWindow.Dispose();
         foreach (var f in Application.OpenForms.Cast<Form>().ToList()) f.Close();
         _tray.Visible = false;
