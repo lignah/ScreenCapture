@@ -29,12 +29,13 @@ internal abstract class Annotation : IDisposable
         LineJoin = LineJoin.Round,
     };
 
-    public static void DrawArrow(Graphics g, Color color, float width, PointF a, PointF b)
+    /// <param name="headLength">Arrowhead length; null = automatic (used for drawn arrows).</param>
+    public static void DrawArrow(Graphics g, Color color, float width, PointF a, PointF b, float? headLength = null)
     {
         float dx = b.X - a.X, dy = b.Y - a.Y;
         float len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 1) return;
-        float head = Math.Min(len, Math.Max(10f, width * 4.5f));
+        float head = headLength is > 0 ? Math.Min(len, headLength.Value) : Math.Min(len, Math.Max(10f, width * 4.5f));
         float half = head * 0.45f;
         float ux = dx / len, uy = dy / len;
         var basePt = new PointF(b.X - ux * head, b.Y - uy * head);

@@ -1099,7 +1099,13 @@ internal sealed class OverlayForm : Form
                 g.DrawRectangle(pen, c.X - 7 * s, c.Y - 5.5f * s, 14 * s, 11 * s);
                 break;
             case "arrow":
-                Annotation.DrawArrow(g, fg, 1.6f * s, new PointF(c.X - 6 * s, c.Y + 6 * s), new PointF(c.X + 6.5f * s, c.Y - 6.5f * s));
+            {
+                // Toolbar icon only: same overall length, head = 1/3 of it (drawn arrows keep the automatic head).
+                var a0 = new PointF(c.X - 6 * s, c.Y + 6 * s);
+                var a1 = new PointF(c.X + 6.5f * s, c.Y - 6.5f * s);
+                float len = MathF.Sqrt((a1.X - a0.X) * (a1.X - a0.X) + (a1.Y - a0.Y) * (a1.Y - a0.Y));
+                Annotation.DrawArrow(g, fg, 1.6f * s, a0, a1, len / 3f);
+            }
                 break;
             case "pen":
                 g.DrawBezier(pen, c.X - 7 * s, c.Y + 4 * s, c.X - 3 * s, c.Y - 9 * s, c.X + 2 * s, c.Y + 10 * s, c.X + 7 * s, c.Y - 4 * s);
