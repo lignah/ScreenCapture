@@ -1,7 +1,7 @@
 """Draws the ScreenCapture icon (matte black rounded square, white crosshair + hollow circle, red-orange dot)
 as vector art with supersampling and writes multi-size .ico files.
 
-  python3 tools/make-icon.py            -> app.ico (normal) and app_busy.ico (OCR-busy tray variant)
+  python3 tools/make-icon.py            -> app.ico (normal), app_busy.ico (OCR-busy tray variant), docs/icon.png (README)
 
 Small sizes (16-32) use hand-tuned, thicker strokes and a larger circle/dot so they stay legible.
 The busy variant tints the crosshair amber and turns the corner dot amber, so it is distinct from the red dot.
@@ -20,8 +20,8 @@ AMBER = (255, 184, 28, 255)     # #FFB81C (busy)
 
 # size: margin, radius, stroke, arm (center->end), gap (center->arm start), circle r, circle stroke, dot r, dot center (fraction of size)
 P = {
-    16:  (0.0, 3.2, 0, 0, 0, 0, 0, 1.45, (0.8125, 0.1875)),   # crosshair is pixel-drawn (PIXEL_CROSS)
-    20:  (0.0, 4.0, 0, 0, 0, 0, 0, 1.9, (0.8, 0.2)),
+    16:  (0.0, 4.0, 0, 0, 0, 0, 0, 1.45, (0.8125, 0.1875)),   # crosshair is pixel-drawn (PIXEL_CROSS)
+    20:  (0.0, 5.0, 0, 0, 0, 0, 0, 1.9, (0.8, 0.2)),
     24:  (0.5, 4.8, 2.00, 9.0, 4.0, 2.8, 1.40, 2.6, (0.785, 0.215)),
     32:  (1.0, 6.4, 2.00, 11.0, 5.0, 3.5, 1.70, 3.2, (0.785, 0.215)),
     40:  (1.0, 8.0, 2.10, 12.8, 5.6, 3.9, 1.80, 3.6, (0.795, 0.205)),
@@ -32,7 +32,8 @@ P = {
 
 
 # Hand-placed 1px crosshair for the smallest sizes (center pixel, ring half-size, arm start, arm end offsets).
-PIXEL_CROSS = {16: (7, 1, 3, 5), 20: (9, 2, 4, 7)}
+# The ring drops its corners so it reads as a hollow circle, and a 1px+ gap separates it from the four arms.
+PIXEL_CROSS = {16: (7, 2, 4, 6), 20: (9, 2, 5, 7)}
 
 
 def pixel_cross(img, size, fg):
@@ -108,3 +109,5 @@ if __name__ == "__main__":
     for busy, name in ((False, "app.ico"), (True, "app_busy.ico")):
         write_ico(name, [frame(s, busy) for s in SIZES])
         print("wrote", name)
+    frame(256).save("docs/icon.png")
+    print("wrote docs/icon.png")
