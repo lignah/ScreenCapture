@@ -19,7 +19,13 @@ AMBER = (255, 184, 28, 255)     # #FFB81C (busy)
 
 # One design, laid out on a 256 px grid: margin, corner radius, arm stroke, arm end and arm start (from center),
 # center ring radius and stroke, dot radius, dot center (fraction of size). Every size is this design scaled down.
-M, RAD, SW, ARM, GAP, CR, CSW, DR, (DX, DY) = 8.0, 52.0, 4.2, 62.0, 17.0, 10.5, 3.8, 12.5, (0.805, 0.195)
+# Originally drawn with an 8 px margin; the tile now fills the whole canvas (like other tray icons) and everything
+# inside scales up with it by 256/240, so the internal proportions are unchanged.
+_M0 = 8.0
+_F = 256 / (256 - 2 * _M0)
+M = 0.0
+RAD, SW, ARM, GAP, CR, CSW, DR = (v * _F for v in (52.0, 4.2, 62.0, 17.0, 10.5, 3.8, 12.5))
+DX, DY = ((0.805 * 256 - _M0) / (256 - 2 * _M0), (0.195 * 256 - _M0) / (256 - 2 * _M0))
 
 
 def master(busy=False):
