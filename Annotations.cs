@@ -30,13 +30,14 @@ internal abstract class Annotation : IDisposable
     };
 
     /// <param name="headLength">Arrowhead length; null = automatic (used for drawn arrows).</param>
-    public static void DrawArrow(Graphics g, Color color, float width, PointF a, PointF b, float? headLength = null)
+    /// <param name="headSpread">Half-width of the head as a fraction of its length (drawn arrows: 0.45).</param>
+    public static void DrawArrow(Graphics g, Color color, float width, PointF a, PointF b, float? headLength = null, float headSpread = 0.45f)
     {
         float dx = b.X - a.X, dy = b.Y - a.Y;
         float len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 1) return;
         float head = headLength is > 0 ? Math.Min(len, headLength.Value) : Math.Min(len, Math.Max(10f, width * 4.5f));
-        float half = head * 0.45f;
+        float half = head * headSpread;
         float ux = dx / len, uy = dy / len;
         var basePt = new PointF(b.X - ux * head, b.Y - uy * head);
         var p1 = new PointF(basePt.X - uy * half, basePt.Y + ux * half);
