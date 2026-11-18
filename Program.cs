@@ -72,6 +72,8 @@ internal static class Program
         if (i >= 0) return RunTest(args, i, overlay: false);
         i = Array.IndexOf(args, "--magnifier-selftest");
         if (i >= 0) return RunMagnifierTest(args, i);
+        i = Array.IndexOf(args, "--toolbar-selftest");
+        if (i >= 0) return RunToolbarTest(args, i);
         i = Array.IndexOf(args, "--overlay-selftest");
         if (i >= 0) return RunTest(args, i, overlay: true);
 
@@ -344,6 +346,35 @@ internal static class Program
         }
         catch { }
         return 0;
+    }
+
+    /// <summary>--toolbar-selftest &lt;png&gt; [--thickness 0|1|2]: renders the capture toolbar on a plain background
+    /// (no screen content) plus a zoomed Arrow icon; writes &lt;png&gt;.info.txt with button ids and starting thickness.</summary>
+    private static int RunToolbarTest(string[] args, int index)
+    {
+        string path = Path.GetFullPath(args[index + 1]);
+        try
+        {
+            var settings = AppSettings.Load();
+            int t = Array.IndexOf(args, "--thickness");
+            if (t >= 0) settings.DefaultThickness = int.Parse(args[t + 1]);
+            var vb = SystemInformation.VirtualScreen;
+            var bmp = new Bitmap(Math.Max(vb.Width, 2400), Math.Max(vb.Height, 600), System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp)) g.Clear(Color.Gray);
+            using var form = new OverlayForm(bmp, new Rectangle(vb.Location, bmp.Size), new List<Rectangle>(), settings);
+            using (var img = form.ToolbarSelfTest(out var ids, out var thick))
+            {
+                ImageOutput.Save(img, path);
+                File.WriteAllText(path + ".info.txt", $"buttons={ids}{Environment.NewLine}thickIdx={thick}{Environment.NewLine}");
+            }
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+            File.WriteAllText(path + ".info.txt", "error: " + ex);
+            return 1;
+        }
     }
 
     /// <summary>--magnifier-selftest &lt;png&gt;: renders the magnifier over the current screen at (200,200) and writes

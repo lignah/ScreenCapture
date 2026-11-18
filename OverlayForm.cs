@@ -853,6 +853,38 @@ internal sealed class OverlayForm : Form
         OcrRequested?.Invoke(bmp, near);
     }
 
+    /// <summary>--toolbar-selftest: the toolbar at 2x DPI scale plus the Arrow icon zoomed, and the button ids.</summary>
+    internal Bitmap ToolbarSelfTest(out string buttonIds, out int thickIdx)
+    {
+        var cr = ClientR;
+        _s = 2f;
+        _sel = new Rectangle(cr.Width / 2 - 450, 40, 900, 200);
+        _mode = Mode.Selected;
+        LayoutToolbar();
+        buttonIds = string.Join(",", _buttons.Select(b => b.Id));
+        thickIdx = _thickIdx;
+        var tb = _toolbarRect;
+        var arrow = _buttons.First(b => b.Id == "arrow").Rect;
+        const int zoom = 5;
+        int pad = 16;
+        var outBmp = new Bitmap(Math.Max(tb.Width, arrow.Width * zoom) + pad * 2, tb.Height + arrow.Height * zoom + pad * 3, PixelFormat.Format32bppArgb);
+        using (var full = new Bitmap(cr.Width, Math.Max(cr.Height, tb.Bottom + 1), PixelFormat.Format32bppArgb))
+        {
+            using (var g = Graphics.FromImage(full))
+            {
+                g.Clear(Color.FromArgb(200, 200, 200));
+                DrawToolbar(g);
+            }
+            using var og = Graphics.FromImage(outBmp);
+            og.Clear(Color.FromArgb(200, 200, 200));
+            og.DrawImage(full, new Rectangle(pad, pad, tb.Width, tb.Height), tb, GraphicsUnit.Pixel);
+            og.InterpolationMode = InterpolationMode.NearestNeighbor;
+            og.PixelOffsetMode = PixelOffsetMode.Half;
+            og.DrawImage(full, new Rectangle(pad, tb.Height + pad * 2, arrow.Width * zoom, arrow.Height * zoom), arrow, GraphicsUnit.Pixel);
+        }
+        return outBmp;
+    }
+
     /// <summary>Headless render-pipeline check used by --overlay-selftest.</summary>
     internal Bitmap SelfTestRender()
     {
