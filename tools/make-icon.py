@@ -3,80 +3,51 @@ as vector art with supersampling and writes multi-size .ico files.
 
   python3 tools/make-icon.py            -> app.ico (normal), app_busy.ico (OCR-busy tray variant), docs/icon.png (README)
 
-Small sizes (16-32) use hand-tuned, thicker strokes and a larger circle/dot so they stay legible.
+Every size (tray 16 px up to 256 px) is the same design, downscaled with LANCZOS, so it looks identical.
 The busy variant tints the crosshair amber and turns the corner dot amber, so it is distinct from the red dot.
 """
 import io, struct, sys
 from PIL import Image, ImageDraw
 
 SIZES = [16, 20, 24, 32, 40, 48, 64, 256]
-SS = 8  # supersampling factor
+SS = 8  # supersampling factor (master is 2048 px)
 
 BG = (26, 26, 26, 255)          # #1A1A1A
-EDGE = (255, 255, 255, 40)      # faint rim so the square reads on dark taskbars
 WHITE = (255, 255, 255, 255)
 RED = (219, 58, 46, 255)        # #DB3A2E
 AMBER = (255, 184, 28, 255)     # #FFB81C (busy)
 
-# size: margin, radius, stroke, arm (center->end), gap (center->arm start), circle r, circle stroke, dot r, dot center (fraction of size)
-P = {
-    16:  (0.0, 4.0, 0, 0, 0, 0, 0, 1.45, (0.8125, 0.1875)),   # crosshair is pixel-drawn (PIXEL_CROSS)
-    20:  (0.0, 5.0, 0, 0, 0, 0, 0, 1.9, (0.8, 0.2)),
-    24:  (0.5, 4.8, 2.00, 9.0, 4.0, 2.8, 1.40, 2.6, (0.785, 0.215)),
-    32:  (1.0, 6.4, 2.00, 11.0, 5.0, 3.5, 1.70, 3.2, (0.785, 0.215)),
-    40:  (1.0, 8.0, 2.10, 12.8, 5.6, 3.9, 1.80, 3.6, (0.795, 0.205)),
-    48:  (1.5, 9.6, 2.30, 14.8, 6.2, 4.3, 1.90, 4.1, (0.800, 0.200)),
-    64:  (2.0, 12.8, 2.60, 19.0, 7.6, 5.2, 2.20, 5.0, (0.805, 0.195)),
-    256: (8.0, 52.0, 4.20, 62.0, 17.0, 10.5, 3.80, 12.5, (0.805, 0.195)),
-}
+# One design, laid out on a 256 px grid: margin, corner radius, arm stroke, arm end and arm start (from center),
+# center ring radius and stroke, dot radius, dot center (fraction of size). Every size is this design scaled down.
+M, RAD, SW, ARM, GAP, CR, CSW, DR, (DX, DY) = 8.0, 52.0, 4.2, 62.0, 17.0, 10.5, 3.8, 12.5, (0.805, 0.195)
 
 
-# Hand-placed 1px crosshair for the smallest sizes (center pixel, ring half-size, arm start, arm end offsets).
-# The ring drops its corners so it reads as a hollow circle, and a 1px+ gap separates it from the four arms.
-PIXEL_CROSS = {16: (7, 2, 4, 6), 20: (9, 2, 5, 7)}
-
-
-def pixel_cross(img, size, fg):
-    c, ring, a0, a1 = PIXEL_CROSS[size]
-    px = img.load()
-    # ring: square outline of half-size `ring` with the corners dropped when ring > 1 (reads as a circle)
-    for x in range(c - ring, c + ring + 1):
-        for y in range(c - ring, c + ring + 1):
-            edge = max(abs(x - c), abs(y - c)) == ring
-            corner = ring > 1 and abs(x - c) == ring and abs(y - c) == ring
-            if edge and not corner:
-                px[x, y] = fg
-    for o in range(a0, a1 + 1):
-        for x, y in ((c - o, c), (c + o, c), (c, c - o), (c, c + o)):
-            px[x, y] = fg
-
-
-def frame(size, busy=False):
-    m, rad, sw, arm, gap, cr, csw, dr, (dx, dy) = P[size]
-    S = size * SS
+def master(busy=False):
+    """The 256 px design drawn at 256*SS for clean anti-aliasing."""
+    k = SS
+    S = 256 * k
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    k = SS
-    box = [m * k, m * k, (size - m) * k - 1, (size - m) * k - 1]
-    d.rounded_rectangle(box, radius=rad * k, fill=BG)
-    if size <= 64:
-        d.rounded_rectangle(box, radius=rad * k, outline=EDGE, width=max(1, int(0.8 * k)))
+    d.rounded_rectangle([M * k, M * k, (256 - M) * k - 1, (256 - M) * k - 1], radius=RAD * k, fill=BG)
     fg = AMBER if busy else WHITE
-    dcx, dcy = dx * size * k, dy * size * k
-    d.ellipse([dcx - dr * k, dcy - dr * k, dcx + dr * k, dcy + dr * k], fill=AMBER if busy else RED)
-    if size in PIXEL_CROSS:
-        small = img.resize((size, size), Image.LANCZOS)
-        pixel_cross(small, size, fg)
-        return small
-    c = size / 2 * k
-    h = sw * k / 2
-    # four arms (rectangles, so ends are square and crisp)
-    d.rectangle([c - arm * k, c - h, c - gap * k, c + h], fill=fg)
-    d.rectangle([c + gap * k, c - h, c + arm * k, c + h], fill=fg)
-    d.rectangle([c - h, c - arm * k, c + h, c - gap * k], fill=fg)
-    d.rectangle([c - h, c + gap * k, c + h, c + arm * k], fill=fg)
-    d.ellipse([c - cr * k, c - cr * k, c + cr * k, c + cr * k], outline=fg, width=max(1, round(csw * k)))
-    return img.resize((size, size), Image.LANCZOS)
+    dcx, dcy = DX * S, DY * S
+    d.ellipse([dcx - DR * k, dcy - DR * k, dcx + DR * k, dcy + DR * k], fill=fg if busy else RED)
+    c = S / 2
+    h = SW * k / 2
+    # four separate arms (rectangles, so ends are square), leaving a wide gap around the ring
+    d.rectangle([c - ARM * k, c - h, c - GAP * k, c + h], fill=fg)
+    d.rectangle([c + GAP * k, c - h, c + ARM * k, c + h], fill=fg)
+    d.rectangle([c - h, c - ARM * k, c + h, c - GAP * k], fill=fg)
+    d.rectangle([c - h, c + GAP * k, c + h, c + ARM * k], fill=fg)
+    d.ellipse([c - CR * k, c - CR * k, c + CR * k, c + CR * k], outline=fg, width=max(1, round(CSW * k)))
+    return img
+
+
+def frame(size, busy=False, _cache={}):
+    """Same proportions at every size: high-quality downscale of the master (no per-size redesign)."""
+    if busy not in _cache:
+        _cache[busy] = master(busy)
+    return _cache[busy].resize((size, size), Image.LANCZOS)
 
 
 def dib(img):
