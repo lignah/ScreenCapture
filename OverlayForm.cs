@@ -44,7 +44,7 @@ internal sealed class OverlayForm : Form
     private Annotation? _current;
     private readonly List<Annotation> _ann = new();
     private int _colorIdx;
-    private int _thickIdx = 1;
+    private int _thickIdx;
     private TextBox? _textBox;
     private readonly List<Btn> _buttons = new();
     private readonly List<int> _separators = new();
@@ -71,6 +71,7 @@ internal sealed class OverlayForm : Form
         _src = frozen;
         _vb = virtualBounds;
         _settings = settings;
+        _thickIdx = Math.Clamp(settings.DefaultThickness, 0, Thickness.Length - 1);
         var client = new Rectangle(Point.Empty, _vb.Size);
         _windows = windowRectsScreen
             .Select(r => { r.Offset(-_vb.X, -_vb.Y); r.Intersect(client); return r; })

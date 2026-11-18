@@ -61,7 +61,7 @@ internal static class Program
         {
             // Prints the effective OCR settings after AppSettings.Load() (verifies engine migration).
             var st = AppSettings.Load();
-            Emit(new System.Text.StringBuilder($"OcrEngine={st.OcrEngine} OcrLanguage={st.OcrLanguage} merge={st.OcrMergeParagraphs}{Environment.NewLine}"), null, 0);
+            Emit(new System.Text.StringBuilder($"OcrEngine={st.OcrEngine} OcrLanguage={st.OcrLanguage} merge={st.OcrMergeParagraphs} DefaultThickness={st.DefaultThickness}{Environment.NewLine}"), null, 0);
             return 0;
         }
         int ct = Array.IndexOf(args, "--ocr-copy-test");

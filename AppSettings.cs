@@ -26,6 +26,9 @@ internal sealed class AppSettings
     /// <summary>OCR result window: join wrapped lines into paragraphs (true) or keep original line breaks.</summary>
     public bool OcrMergeParagraphs { get; set; } = true;
 
+    /// <summary>Capture-screen starting stroke thickness: 0 = Thin (default), 1 = Medium, 2 = Thick.</summary>
+    public int DefaultThickness { get; set; }
+
     /// <summary>OCR always copies to the clipboard; this additionally opens the editable result window.</summary>
     public bool OcrShowWindow { get; set; }
 
@@ -48,6 +51,7 @@ internal sealed class AppSettings
             if (File.Exists(FilePath))
             {
                 var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
+                s.DefaultThickness = Math.Clamp(s.DefaultThickness, 0, 2);
                 if (s.OcrEngine != "paddle")
                 {
                     s.OcrEngine = "paddle"; // engine choice was removed; migrate old "windows" setting

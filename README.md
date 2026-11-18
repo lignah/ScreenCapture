@@ -45,6 +45,7 @@
 | OCR capture (extract text) | 영역을 고르면 바로 OCR 해서 글자를 복사 |
 | Full screen capture | 전체 화면을 복사하고 `사진\Screenshots`에 PNG로 저장 |
 | OCR 설정 | 문단으로 합치기, 결과 창 표시, OCR 언어 (선택, `언어 추가…`, `언어 삭제…`) |
+| 기본 굵기 | 캡처 화면이 시작할 때의 선 굵기 (Thin 기본, Medium, Thick) |
 | Open screenshots folder | 저장 폴더 열기 |
 | Settings... | 저장 폴더, 단축키, 저장 방식, Windows 시작 시 실행 |
 | Exit | 종료 |

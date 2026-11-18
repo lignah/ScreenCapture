@@ -56,10 +56,16 @@ internal sealed class TrayContext : ApplicationContext
         var ocrSettings = new ToolStripMenuItem("OCR 설정");
         ocrSettings.DropDownItems.AddRange(new ToolStripItem[] { merge, showWindow, new ToolStripSeparator(), languages });
         menu.Items.Add(ocrSettings);
+        var thickness = new ToolStripMenuItem("기본 굵기");
+        var thickItems = new[] { "Thin", "Medium", "Thick" }.Select((name, i) =>
+            new ToolStripMenuItem(name, null, (_, _) => { _settings.DefaultThickness = i; _settings.Save(); })).ToArray();
+        thickness.DropDownItems.AddRange(thickItems);
+        menu.Items.Add(thickness);
         // Settings can also change in the Settings dialog or the OCR window; refresh check marks on open.
         menu.Opening += (_, _) =>
         {
             showWindow.Checked = _settings.OcrShowWindow;
+            for (int i = 0; i < thickItems.Length; i++) thickItems[i].Checked = _settings.DefaultThickness == i;
             merge.Checked = _settings.OcrMergeParagraphs;
             FillLanguageMenu(languages);
         };
