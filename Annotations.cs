@@ -74,17 +74,6 @@ internal sealed class RectAnnotation : DragAnnotation
     }
 }
 
-internal sealed class EllipseAnnotation : DragAnnotation
-{
-    public EllipseAnnotation(Point p, Color c, float w) : base(p, c, w) { }
-
-    public override void Draw(Graphics g, Bitmap source)
-    {
-        using var pen = MakePen();
-        g.DrawEllipse(pen, Bounds);
-    }
-}
-
 internal sealed class ArrowAnnotation : DragAnnotation
 {
     public ArrowAnnotation(Point p, Color c, float w) : base(p, c, w) { }

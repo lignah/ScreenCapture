@@ -11,7 +11,7 @@ namespace ScreenCapture;
 internal sealed class OverlayForm : Form
 {
     private enum Mode { Idle, Creating, Selected, Moving, Resizing, Drawing }
-    private enum Tool { None, Rect, Ellipse, Arrow, Pen, Text, Mosaic }
+    private enum Tool { None, Rect, Arrow, Pen, Text, Mosaic }
     private sealed record Btn(string Id, string Tip, Rectangle Rect, bool Small);
 
     private static readonly Color Accent = Color.FromArgb(0, 120, 215);
@@ -608,7 +608,6 @@ internal sealed class OverlayForm : Form
     private static string ToolId(Tool t) => t switch
     {
         Tool.Rect => "rect",
-        Tool.Ellipse => "ellipse",
         Tool.Arrow => "arrow",
         Tool.Pen => "pen",
         Tool.Text => "text",
@@ -624,7 +623,6 @@ internal sealed class OverlayForm : Form
         switch (id)
         {
             case "rect": SetTool(Tool.Rect); break;
-            case "ellipse": SetTool(Tool.Ellipse); break;
             case "arrow": SetTool(Tool.Arrow); break;
             case "pen": SetTool(Tool.Pen); break;
             case "text": SetTool(Tool.Text); break;
@@ -632,8 +630,6 @@ internal sealed class OverlayForm : Form
             case "undo": Undo(); break;
             case "ocr": Ocr(); return;
             case "pin": Pin(); return;
-            case "save": Save(); return;
-            case "cancel": Close(); return;
             case "copy": Copy(); return;
             default:
                 if (id.StartsWith("col", StringComparison.Ordinal))
@@ -686,7 +682,6 @@ internal sealed class OverlayForm : Form
         {
             case Tool.Text: BeginText(p); return;
             case Tool.Rect: _current = new RectAnnotation(p, c, w); break;
-            case Tool.Ellipse: _current = new EllipseAnnotation(p, c, w); break;
             case Tool.Arrow: _current = new ArrowAnnotation(p, c, w); break;
             case Tool.Pen: _current = new PenAnnotation(p, c, w); break;
             case Tool.Mosaic:
@@ -872,7 +867,6 @@ internal sealed class OverlayForm : Form
             _ann.Add(a);
         }
         Add(new RectAnnotation(new Point(x.X + 20, x.Y + 20), Palette[0], 4), new Point(x.X + 160, x.Y + 110));
-        Add(new EllipseAnnotation(new Point(x.X + 180, x.Y + 20), Palette[2], 4), new Point(x.X + 320, x.Y + 110));
         Add(new ArrowAnnotation(new Point(x.X + 30, x.Y + 280), Palette[3], 4), new Point(x.X + 200, x.Y + 150));
         var pen = new PenAnnotation(new Point(x.X + 340, x.Y + 200), Palette[1], 4);
         for (int i = 1; i <= 20; i++) pen.Update(new Point(x.X + 340 + i * 5, x.Y + 200 + (int)(20 * Math.Sin(i / 3.0))));
@@ -919,7 +913,7 @@ internal sealed class OverlayForm : Form
         int bw = S(32), sw = S(24), sep = S(11), pad = S(5), h = S(42);
         var items = new List<(string Id, string Tip, bool Small)?>
         {
-            ("rect", "Rectangle", false), ("ellipse", "Ellipse", false), ("arrow", "Arrow", false),
+            ("rect", "Rectangle", false), ("arrow", "Arrow", false),
             ("pen", "Pen", false), ("text", "Text", false), ("mosaic", "Mosaic / blur", false),
             null, ("undo", "Undo (Ctrl+Z)", false), null,
         };
@@ -930,8 +924,6 @@ internal sealed class OverlayForm : Form
         items.Add(null);
         items.Add(("ocr", "Extract text - OCR (Ctrl+T)", false));
         items.Add(("pin", "Pin to screen", false));
-        items.Add(("save", "Save as PNG (Ctrl+S)", false));
-        items.Add(("cancel", "Cancel (Esc)", false));
         items.Add(("copy", "Copy to clipboard (Enter / double-click)", false));
 
         int width = pad * 2 + items.Sum(it => it is null ? sep : it.Value.Small ? sw : bw);
@@ -1106,9 +1098,6 @@ internal sealed class OverlayForm : Form
             case "rect":
                 g.DrawRectangle(pen, c.X - 7 * s, c.Y - 5.5f * s, 14 * s, 11 * s);
                 break;
-            case "ellipse":
-                g.DrawEllipse(pen, c.X - 7.5f * s, c.Y - 5.5f * s, 15 * s, 11 * s);
-                break;
             case "arrow":
                 Annotation.DrawArrow(g, fg, 1.6f * s, new PointF(c.X - 6 * s, c.Y + 6 * s), new PointF(c.X + 6.5f * s, c.Y - 6.5f * s));
                 break;
@@ -1133,8 +1122,6 @@ internal sealed class OverlayForm : Form
                 break;
             case "undo": IconGlyph(g, "\uE7A7", "↶", fg, r); break;
             case "pin": IconGlyph(g, "\uE718", "P", fg, r); break;
-            case "save": IconGlyph(g, "\uE74E", "S", fg, r); break;
-            case "cancel": IconGlyph(g, "\uE711", "✕", fg, r); break;
             case "copy": IconGlyph(g, "\uE8FB", "✓", fg, r); break;
             default:
                 if (b.Id.StartsWith("col", StringComparison.Ordinal))
