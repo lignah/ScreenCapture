@@ -45,7 +45,9 @@ internal sealed class OverlayForm : Form
     private readonly List<Annotation> _ann = new();
     private int _colorIdx;
     private int _thickIdx;
-    private TextBox? _textBox;
+    private TextEditor? _edit;
+    private bool _caretOn = true;
+    private readonly System.Windows.Forms.Timer _caretTimer = new() { Interval = 530 };
     private readonly List<Btn> _buttons = new();
     private readonly List<int> _separators = new();
     private Rectangle _toolbarRect;
@@ -98,6 +100,7 @@ internal sealed class OverlayForm : Form
         Bounds = _vb;
         Cursor = Cursors.Cross;
         KeyPreview = false;
+        _caretTimer.Tick += OnCaretTick;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.Opaque, true);
     }
@@ -156,6 +159,7 @@ internal sealed class OverlayForm : Form
             m.Result = IntPtr.Zero;
             return;
         }
+        if (HandleIme(ref m)) return;
         if (m.Msg == NoFlash.WM_ERASEBKGND)
         {
             m.Result = (IntPtr)1; // everything is painted in OnPaint
@@ -173,7 +177,8 @@ internal sealed class OverlayForm : Form
             foreach (var a in _ann) a.Dispose();
             _current?.Dispose();
             foreach (var f in _fonts.Values) f.Dispose();
-            _textBox?.Dispose();
+            _edit?.Dispose();
+            _caretTimer.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -355,7 +360,7 @@ internal sealed class OverlayForm : Form
 
         if (e.Button == MouseButtons.Right)
         {
-            if (_textBox != null) { CancelText(); return; }
+            if (_edit != null) { CancelText(); return; }
             if (_mode == Mode.Drawing)
             {
                 _current?.Dispose();
@@ -377,7 +382,7 @@ internal sealed class OverlayForm : Form
             return;
         }
 
-        if (_textBox != null) { CommitText(); return; }
+        if (_edit != null) { CommitText(); return; }
 
         if (e.Clicks >= 2 && HasSel && _sel.Contains(p) && _tool != Tool.Text)
         {
@@ -552,11 +557,10 @@ internal sealed class OverlayForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        if (_textBox != null && _textBox.Focused)
+        if (_edit != null)
         {
-            if (keyData == Keys.Enter) { CommitText(); return true; }
-            if (keyData == Keys.Escape) { CancelText(); return true; }
-            return base.ProcessCmdKey(ref msg, keyData);
+            if (EditKey(keyData)) return true;
+            return base.ProcessCmdKey(ref msg, keyData); // characters arrive as WM_CHAR / IME messages
         }
 
         switch (keyData)
@@ -613,7 +617,7 @@ internal sealed class OverlayForm : Form
     private void OnButton(string id)
     {
         bool styleButton = id.StartsWith("col", StringComparison.Ordinal) || id.StartsWith("th", StringComparison.Ordinal);
-        if (_textBox != null && !styleButton) CommitText();
+        if (_edit != null && !styleButton) CommitText();
 
         switch (id)
         {
@@ -630,24 +634,12 @@ internal sealed class OverlayForm : Form
                 if (id.StartsWith("col", StringComparison.Ordinal))
                 {
                     _colorIdx = id[3] - '0';
-                    if (_textBox != null)
-                    {
-                        _textBox.ForeColor = Palette[_colorIdx];
-                        _textBox.BackColor = TextBack(Palette[_colorIdx]);
-                        _textBox.Focus();
-                    }
+                    if (_edit != null) _edit.Color = Palette[_colorIdx];
                 }
                 else if (id.StartsWith("th", StringComparison.Ordinal))
                 {
                     _thickIdx = id[2] - '0';
-                    if (_textBox != null)
-                    {
-                        var old = _textBox.Font;
-                        _textBox.Font = new Font("Segoe UI", FontPx[_thickIdx] * _s, FontStyle.Regular, GraphicsUnit.Pixel);
-                        old.Dispose();
-                        FitTextBox();
-                        _textBox.Focus();
-                    }
+                    _edit?.SetFont(TextFont());
                 }
                 break;
         }
@@ -662,7 +654,7 @@ internal sealed class OverlayForm : Form
 
     private void Undo()
     {
-        if (_textBox != null) { CancelText(); return; }
+        if (_edit != null) { CancelText(); return; }
         if (_ann.Count == 0) return;
         _ann[^1].Dispose();
         _ann.RemoveAt(_ann.Count - 1);
@@ -687,63 +679,129 @@ internal sealed class OverlayForm : Form
         _mode = Mode.Drawing;
     }
 
-    private static Color TextBack(Color fg) => fg.GetBrightness() > 0.6f ? Color.FromArgb(48, 48, 48) : Color.White;
+    private Font TextFont() => new("Segoe UI", FontPx[_thickIdx] * _s, FontStyle.Regular, GraphicsUnit.Pixel);
 
     private void BeginText(Point p)
     {
-        var c = Palette[_colorIdx];
-        _textBox = new TextBox
-        {
-            Multiline = true,
-            AcceptsReturn = true,
-            WordWrap = false,
-            ScrollBars = ScrollBars.None,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Segoe UI", FontPx[_thickIdx] * _s, FontStyle.Regular, GraphicsUnit.Pixel),
-            ForeColor = c,
-            BackColor = TextBack(c),
-            Location = p,
-        };
-        _textBox.TextChanged += (_, _) => FitTextBox();
-        Controls.Add(_textBox);
-        FitTextBox();
-        _textBox.Focus();
+        _edit?.Dispose();
+        _edit = new TextEditor(p, TextFont(), Palette[_colorIdx]);
+        _caretOn = true;
+        _caretTimer.Stop();
+        _caretTimer.Start();
+        Focus();
+        if (IsHandleCreated) ImeOk = Native.ImeEnable(Handle);
+        Changed();
     }
 
-    private void FitTextBox()
+    /// <summary>Whether the overlay had an IME context when the editor opened (reported by --text-selftest).</summary>
+    internal bool ImeOk { get; private set; }
+
+    private void OnCaretTick(object? sender, EventArgs e)
     {
-        if (_textBox == null) return;
-        var text = _textBox.Text.Length == 0 ? "W" : _textBox.Text + "W";
-        var sz = TextRenderer.MeasureText(text, _textBox.Font);
-        _textBox.Size = new Size(Math.Max(sz.Width + 10, S(60)), sz.Height + 8);
+        if (_edit == null) { _caretTimer.Stop(); return; }
+        _caretOn = !_caretOn;
+        Changed();
+    }
+
+    private void Edited()
+    {
+        _caretOn = true; // keep the caret solid while typing
+        _caretTimer.Stop();
+        _caretTimer.Start();
+        Changed();
+    }
+
+    /// <summary>Editing keys while the text editor is open; returns true when handled.</summary>
+    private bool EditKey(Keys keyData)
+    {
+        var ed = _edit!;
+        if ((keyData & Keys.KeyCode) == Keys.ProcessKey) return false; // IME is handling this key
+        if (ed.Composition.Length > 0) return false;                    // let the IME finish/edit the syllable
+        switch (keyData)
+        {
+            case Keys.Enter: CommitText(); return true;
+            case Keys.Shift | Keys.Enter: ed.Insert("\n"); break;
+            case Keys.Escape: CancelText(); return true;
+            case Keys.Back: ed.Backspace(); break;
+            case Keys.Delete: ed.Delete(); break;
+            case Keys.Left: ed.Left(); break;
+            case Keys.Right: ed.Right(); break;
+            case Keys.Home: ed.Home(); break;
+            case Keys.End: ed.End(); break;
+            case Keys.Control | Keys.V:
+                try { if (Clipboard.ContainsText()) ed.Insert(Clipboard.GetText()); } catch (Exception ex) { ErrorLog.Write(ex); }
+                break;
+            default:
+                return (keyData & (Keys.Control | Keys.Alt)) != 0; // swallow other shortcuts (no Ctrl+C copy while typing)
+        }
+        Edited();
+        return true;
+    }
+
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        base.OnKeyPress(e);
+        if (_edit == null || char.IsControl(e.KeyChar)) return;
+        _edit.Insert(e.KeyChar.ToString());
+        e.Handled = true;
+        Edited();
+    }
+
+    /// <summary>IME (e.g. Korean): show the syllable being composed inline; insert the finished result.</summary>
+    private bool HandleIme(ref Message m)
+    {
+        if (_edit == null) return false;
+        switch (m.Msg)
+        {
+            case Native.WM_IME_STARTCOMPOSITION:
+                m.Result = IntPtr.Zero; // no separate IME composition window; we draw it in place
+                return true;
+            case Native.WM_IME_COMPOSITION:
+            {
+                long flags = m.LParam.ToInt64();
+                string? result = (flags & Native.GCS_RESULTSTR) != 0 ? Native.ImeString(Handle, Native.GCS_RESULTSTR) : null;
+                string comp = (flags & Native.GCS_COMPSTR) != 0 ? Native.ImeString(Handle, Native.GCS_COMPSTR) ?? "" : "";
+                ImeInput(result, comp);
+                m.Result = IntPtr.Zero;
+                return true;
+            }
+            case Native.WM_IME_ENDCOMPOSITION:
+                ImeInput(null, "");
+                m.Result = IntPtr.Zero;
+                return true;
+        }
+        return false;
+    }
+
+    private void ImeInput(string? result, string composition)
+    {
+        if (_edit == null) return;
+        if (!string.IsNullOrEmpty(result)) _edit.Insert(result);
+        _edit.SetComposition(composition);
+        Edited();
     }
 
     private void CommitText()
     {
-        var tb = _textBox;
-        if (tb == null) return;
-        _textBox = null;
-        if (!string.IsNullOrWhiteSpace(tb.Text))
-        {
-            var loc = new Point(tb.Left + 3, tb.Top + 2);
-            _ann.Add(new TextAnnotation(loc, tb.Text.TrimEnd(), (Font)tb.Font.Clone(), tb.ForeColor));
-        }
-        Controls.Remove(tb);
-        tb.Font.Dispose();
-        tb.Dispose();
-        Focus();
+        var ed = _edit;
+        if (ed == null) return;
+        _edit = null;
+        _caretTimer.Stop();
+        if (ed.Composition.Length > 0) Native.ImeCancel(Handle); // we keep the shown syllable; clear the IME's copy
+        if (!string.IsNullOrWhiteSpace(ed.Final))
+            _ann.Add(new TextAnnotation(ed.Location, ed.Final, (Font)ed.Font.Clone(), ed.Color));
+        ed.Dispose();
         Changed();
     }
 
     private void CancelText()
     {
-        var tb = _textBox;
-        if (tb == null) return;
-        _textBox = null;
-        Controls.Remove(tb);
-        tb.Font.Dispose();
-        tb.Dispose();
-        Focus();
+        var ed = _edit;
+        if (ed == null) return;
+        _edit = null;
+        _caretTimer.Stop();
+        if (ed.Composition.Length > 0) Native.ImeCancel(Handle);
+        ed.Dispose();
         Changed();
     }
 
@@ -845,6 +903,131 @@ internal sealed class OverlayForm : Form
         var near = new Point(_sel.X + _vb.X, _sel.Bottom + _vb.Y + 8);
         Close();
         OcrRequested?.Invoke(bmp, near);
+    }
+
+    /// <summary>--text-selftest: types "Hello 한글 Wj" (Korean through the IME path), renders the editing state and the
+    /// committed output, and compares glyph bounding boxes. Also measures the old TextBox editor for comparison.</summary>
+    internal Bitmap TextSelfTest(out string info)
+    {
+        _ = Handle;
+        var cr = ClientR;
+        _s = 1f;
+        _thickIdx = 1;
+        _colorIdx = 0;
+        _sel = new Rectangle(40, 40, Math.Min(560, cr.Width - 80), 160);
+        _mode = Mode.Selected;
+        _tool = Tool.Text;
+        var at = new Point(_sel.X + 30, _sel.Y + 40);
+        string sample = "Hello 한글 Wj";
+        var sb = new System.Text.StringBuilder();
+
+        // --- old editor: a TextBox with border + white background, committed with DrawString at +3,+2
+        Rectangle oldEditBox, oldCommitBox;
+        Bitmap oldEdit, oldCommit;
+        using (var font = TextFont())
+        using (var host = new Form { StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000), ShowInTaskbar = false, FormBorderStyle = FormBorderStyle.None, Size = new Size(600, 200) })
+        {
+            var tb = new TextBox { Multiline = true, WordWrap = false, ScrollBars = ScrollBars.None, BorderStyle = BorderStyle.FixedSingle,
+                Font = font, ForeColor = Palette[0], BackColor = Color.White, Location = Point.Empty, Text = sample };
+            var sz = TextRenderer.MeasureText(sample + "W", font);
+            tb.Size = new Size(sz.Width + 10, sz.Height + 8);
+            host.Controls.Add(tb);
+            host.Show();
+            tb.Select(sample.Length, 0); // caret at the end, nothing highlighted (as while typing)
+            host.ActiveControl = null;
+            Application.DoEvents();
+            oldEdit = new Bitmap(tb.Width, tb.Height);
+            tb.DrawToBitmap(oldEdit, new Rectangle(Point.Empty, tb.Size));
+            using var blank = new Bitmap(tb.Width, tb.Height);
+            using (var g = Graphics.FromImage(blank)) g.Clear(Color.White);
+            oldEditBox = GlyphBox(oldEdit, blank, 1);
+            oldCommit = new Bitmap(tb.Width, tb.Height);
+            using (var g = Graphics.FromImage(oldCommit))
+            {
+                g.Clear(Color.White);
+                using var brush = new SolidBrush(Palette[0]);
+                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                g.DrawString(sample, font, brush, new Point(3, 2), StringFormat.GenericTypographic);
+            }
+            oldCommitBox = GlyphBox(oldCommit, blank, 1);
+            host.Close();
+        }
+        sb.AppendLine($"old: editing glyphs {oldEditBox}, committed glyphs {oldCommitBox}, offset dx={oldCommitBox.X - oldEditBox.X} dy={oldCommitBox.Y - oldEditBox.Y} " +
+                      $"dw={oldCommitBox.Width - oldEditBox.Width} dh={oldCommitBox.Height - oldEditBox.Height}");
+
+        // --- new editor: typed through the same handlers the real keyboard/IME use
+        BeginText(at);
+        foreach (char ch in "Hello ") OnKeyPress(new KeyPressEventArgs(ch));
+        ImeInput(null, "ㅎ"); ImeInput(null, "하"); ImeInput(null, "한");
+        Bitmap Snapshot(bool chrome)
+        {
+            var bmp = new Bitmap(_sel.Width, _sel.Height, PixelFormat.Format32bppArgb);
+            using var g = Graphics.FromImage(bmp);
+            g.DrawImage(_src, new Rectangle(0, 0, _sel.Width, _sel.Height), _sel, GraphicsUnit.Pixel);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TranslateTransform(-_sel.X, -_sel.Y);
+            _edit!.Draw(g, caretVisible: true, chrome: chrome);
+            return bmp;
+        }
+        var composing = Snapshot(true);
+        sb.AppendLine($"while composing: text='{_edit!.Text}' composition='{_edit.Composition}' display='{_edit.Display}'");
+        ImeInput("한", "ㄱ"); ImeInput(null, "그"); ImeInput(null, "글"); ImeInput("글", "");
+        foreach (char ch in " Wj") OnKeyPress(new KeyPressEventArgs(ch));
+        sb.AppendLine($"typed: '{_edit.Text}' ime-context={ImeOk}");
+        var editing = Snapshot(true);
+        var editingBare = Snapshot(false);
+        using var background = _src.Clone(_sel, PixelFormat.Format32bppArgb);
+        var newEditBox = GlyphBox(editingBare, background, 0);
+        CommitText();
+        var committed = Render();
+        var newCommitBox = GlyphBox(committed, background, 0);
+        int diffPixels = CountDiff(editingBare, committed);
+        sb.AppendLine($"new: editing glyphs {newEditBox}, committed glyphs {newCommitBox}, offset dx={newCommitBox.X - newEditBox.X} dy={newCommitBox.Y - newEditBox.Y} " +
+                      $"dw={newCommitBox.Width - newEditBox.Width} dh={newCommitBox.Height - newEditBox.Height}, differing pixels={diffPixels}");
+
+        // comparison sheet
+        int w = Math.Max(_sel.Width, oldEdit.Width * 2 + 30) + 20, rowH = _sel.Height + 28;
+        var sheet = new Bitmap(w, 30 + (oldEdit.Height + 28) + rowH * 3, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(sheet))
+        {
+            g.Clear(Color.White);
+            using var f = new Font("Segoe UI", 12, GraphicsUnit.Pixel);
+            int y = 6;
+            g.DrawString("OLD  left: TextBox while typing   right: committed (DrawString at +3,+2)", f, Brushes.Black, 10, y); y += 18;
+            g.DrawImage(oldEdit, 10, y); g.DrawImage(oldCommit, 20 + oldEdit.Width, y); y += oldEdit.Height + 10;
+            g.DrawString("NEW  while composing 한 (underlined, caret, dashed frame; screenshot shows through)", f, Brushes.Black, 10, y); y += 18;
+            g.DrawImage(composing, 10, y); y += _sel.Height + 10;
+            g.DrawString("NEW  while typing", f, Brushes.Black, 10, y); y += 18;
+            g.DrawImage(editing, 10, y); y += _sel.Height + 10;
+            g.DrawString("NEW  committed output", f, Brushes.Black, 10, y); y += 18;
+            g.DrawImage(committed, 10, y);
+        }
+        oldEdit.Dispose(); oldCommit.Dispose(); composing.Dispose(); editing.Dispose(); editingBare.Dispose(); committed.Dispose();
+        info = sb.ToString();
+        return sheet;
+    }
+
+    /// <summary>Bounding box of pixels that differ from the background (ignoring an inset border).</summary>
+    private static Rectangle GlyphBox(Bitmap img, Bitmap bg, int inset)
+    {
+        int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+        for (int y = inset; y < img.Height - inset; y++)
+            for (int x = inset; x < img.Width - inset; x++)
+            {
+                Color a = img.GetPixel(x, y), b = bg.GetPixel(x, y);
+                if (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) < 90) continue;
+                x0 = Math.Min(x0, x); y0 = Math.Min(y0, y); x1 = Math.Max(x1, x); y1 = Math.Max(y1, y);
+            }
+        return x1 < 0 ? Rectangle.Empty : Rectangle.FromLTRB(x0, y0, x1 + 1, y1 + 1);
+    }
+
+    private static int CountDiff(Bitmap a, Bitmap b)
+    {
+        int n = 0;
+        for (int y = 0; y < Math.Min(a.Height, b.Height); y++)
+            for (int x = 0; x < Math.Min(a.Width, b.Width); x++)
+                if (a.GetPixel(x, y).ToArgb() != b.GetPixel(x, y).ToArgb()) n++;
+        return n;
     }
 
     /// <summary>--toolbar-selftest: the toolbar at 2x DPI scale plus the Arrow icon zoomed, and the button ids.</summary>
@@ -1019,6 +1202,7 @@ internal sealed class OverlayForm : Form
             g.SetClip(_sel);
             foreach (var a in _ann) a.Draw(g, _src);
             _current?.Draw(g, _src);
+            _edit?.Draw(g, _caretOn);
             g.Restore(state);
 
             g.SmoothingMode = SmoothingMode.None;
@@ -1116,7 +1300,7 @@ internal sealed class OverlayForm : Form
         float s = _s;
         var c = new PointF(r.X + r.Width / 2f, r.Y + r.Height / 2f);
         Color fg = Color.White;
-        if (b.Id == "undo" && _ann.Count == 0 && _textBox == null) fg = Color.FromArgb(110, 110, 110);
+        if (b.Id == "undo" && _ann.Count == 0 && _edit == null) fg = Color.FromArgb(110, 110, 110);
         if (b.Id == "copy") fg = Color.FromArgb(90, 210, 130);
         using var pen = new Pen(fg, 1.6f * s) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round };
 

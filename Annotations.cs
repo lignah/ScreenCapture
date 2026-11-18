@@ -176,14 +176,8 @@ internal sealed class TextAnnotation : Annotation
 
     public override bool IsValid => !string.IsNullOrWhiteSpace(_text);
 
-    public override void Draw(Graphics g, Bitmap source)
-    {
-        var state = g.Save();
-        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-        using var brush = new SolidBrush(Color);
-        g.DrawString(_text, _font, brush, _location, StringFormat.GenericTypographic);
-        g.Restore(state);
-    }
+    // Same path as the editor (TextDraw), so committed text sits exactly where it was typed.
+    public override void Draw(Graphics g, Bitmap source) => TextDraw.Draw(g, _text, _font, Color, _location);
 
     public override void Dispose() => _font.Dispose();
 }

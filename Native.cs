@@ -7,6 +7,54 @@ internal static class Native
 {
     public const int WM_HOTKEY = 0x0312;
 
+    // IME (in-overlay text editor)
+    public const int WM_IME_STARTCOMPOSITION = 0x010D, WM_IME_ENDCOMPOSITION = 0x010E, WM_IME_COMPOSITION = 0x010F;
+    public const int GCS_COMPSTR = 0x0008, GCS_RESULTSTR = 0x0800;
+    private const int NI_COMPOSITIONSTR = 0x0015, CPS_CANCEL = 0x0004;
+
+    [DllImport("imm32.dll")] private static extern IntPtr ImmGetContext(IntPtr hWnd);
+    [DllImport("imm32.dll")] private static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
+    [DllImport("imm32.dll", CharSet = CharSet.Unicode)]
+    private static extern int ImmGetCompositionStringW(IntPtr hIMC, int dwIndex, byte[]? buf, int len);
+    [DllImport("imm32.dll")] private static extern bool ImmNotifyIME(IntPtr hIMC, int action, int index, int value);
+
+    /// <summary>Reads the IME composition (GCS_COMPSTR) or result (GCS_RESULTSTR) string of a window.</summary>
+    public static string? ImeString(IntPtr hWnd, int index)
+    {
+        var himc = ImmGetContext(hWnd);
+        if (himc == IntPtr.Zero) return null;
+        try
+        {
+            int len = ImmGetCompositionStringW(himc, index, null, 0);
+            if (len <= 0) return "";
+            var buf = new byte[len];
+            ImmGetCompositionStringW(himc, index, buf, len);
+            return System.Text.Encoding.Unicode.GetString(buf);
+        }
+        finally { ImmReleaseContext(hWnd, himc); }
+    }
+
+    [DllImport("imm32.dll")] private static extern bool ImmAssociateContextEx(IntPtr hWnd, IntPtr hIMC, int flags);
+
+    /// <summary>Makes sure the window has the default IME context, so Korean/Japanese/Chinese input works in it.</summary>
+    public static bool ImeEnable(IntPtr hWnd)
+    {
+        ImmAssociateContextEx(hWnd, IntPtr.Zero, 0x10 /* IACE_DEFAULT */);
+        var himc = ImmGetContext(hWnd);
+        if (himc == IntPtr.Zero) return false;
+        ImmReleaseContext(hWnd, himc);
+        return true;
+    }
+
+    /// <summary>Drops an unfinished IME composition (the editor already kept what was shown).</summary>
+    public static void ImeCancel(IntPtr hWnd)
+    {
+        var himc = ImmGetContext(hWnd);
+        if (himc == IntPtr.Zero) return;
+        ImmNotifyIME(himc, NI_COMPOSITIONSTR, CPS_CANCEL, 0);
+        ImmReleaseContext(hWnd, himc);
+    }
+
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     public const int WM_DPICHANGED = 0x02E0;

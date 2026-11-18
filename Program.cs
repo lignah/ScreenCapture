@@ -79,6 +79,8 @@ internal static class Program
             try { File.WriteAllText(outPath, TrayContext.FullscreenHotkeySelfTest()); return 0; }
             catch (Exception ex) { ErrorLog.Write(ex); File.WriteAllText(outPath, "error: " + ex); return 1; }
         }
+        i = Array.IndexOf(args, "--text-selftest");
+        if (i >= 0) return RunTextTest(args, i);
         i = Array.IndexOf(args, "--settings-selftest");
         if (i >= 0) return RunSettingsPreview(args, i);
         i = Array.IndexOf(args, "--toolbar-selftest");
@@ -376,6 +378,40 @@ internal static class Program
                 File.WriteAllText(path + ".info.txt", info);
             }
             form.Close();
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+            File.WriteAllText(path + ".info.txt", "error: " + ex);
+            return 1;
+        }
+    }
+
+    /// <summary>--text-selftest &lt;png&gt;: text tool editing vs committed comparison on a synthetic background
+    /// (no screen content); writes &lt;png&gt;.info.txt with the glyph boxes and offsets.</summary>
+    private static int RunTextTest(string[] args, int index)
+    {
+        string path = Path.GetFullPath(args[index + 1]);
+        try
+        {
+            var vb = SystemInformation.VirtualScreen;
+            var bmp = new Bitmap(Math.Max(vb.Width, 800), Math.Max(vb.Height, 400), System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            using (var lg = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, bmp.Width, bmp.Height),
+                       Color.FromArgb(60, 90, 140), Color.FromArgb(230, 230, 210), 0f))
+            {
+                g.FillRectangle(lg, 0, 0, bmp.Width, bmp.Height);
+                using var stripe = new SolidBrush(Color.FromArgb(40, 255, 255, 255));
+                for (int x = 0; x < bmp.Width; x += 24) g.FillRectangle(stripe, x, 0, 12, bmp.Height);
+            }
+            var settings = AppSettings.Load();
+            using var form = new OverlayForm(bmp, new Rectangle(vb.Location, bmp.Size), new List<Rectangle>(), settings);
+            using (var img = form.TextSelfTest(out var info))
+            {
+                ImageOutput.Save(img, path);
+                File.WriteAllText(path + ".info.txt", info);
+            }
             return 0;
         }
         catch (Exception ex)
