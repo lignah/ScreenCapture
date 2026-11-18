@@ -6,7 +6,6 @@ internal sealed class SettingsForm : Form
     private readonly TextBox _folder = new() { Width = 340, Anchor = AnchorStyles.Left | AnchorStyles.Right };
     private readonly CheckBox _ask = new() { Text = "Ask where to save (Save As dialog)", AutoSize = true };
     private readonly CheckBox _saveOnCopy = new() { Text = "Also save a PNG to the folder when copying", AutoSize = true };
-    private readonly CheckBox _fullSave = new() { Text = "Full-screen capture also saves a PNG (it always copies)", AutoSize = true };
     private readonly ComboBox _hotkey = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 200, Anchor = AnchorStyles.Left };
     private readonly CheckBox _startup = new() { Text = "Start with Windows", AutoSize = true };
 
@@ -54,7 +53,7 @@ internal sealed class SettingsForm : Form
         table.Controls.Add(_hotkey, 1, 1);
 
         int row = 2;
-        foreach (var cb in new[] { _ask, _saveOnCopy, _fullSave, _startup })
+        foreach (var cb in new[] { _ask, _saveOnCopy, _startup })
         {
             table.Controls.Add(cb, 0, row);
             table.SetColumnSpan(cb, 3);
@@ -82,7 +81,6 @@ internal sealed class SettingsForm : Form
         _hotkey.Text = settings.Hotkey;
         _ask.Checked = settings.AskWhereToSave;
         _saveOnCopy.Checked = settings.SaveOnCopy;
-        _fullSave.Checked = settings.FullScreenSavesFile;
         try { _startup.Checked = AppSettings.StartWithWindows; } catch { _startup.Enabled = false; }
 
         ok.Click += (_, _) =>
@@ -106,7 +104,6 @@ internal sealed class SettingsForm : Form
         _settings.Hotkey = _hotkey.Text.Trim();
         _settings.AskWhereToSave = _ask.Checked;
         _settings.SaveOnCopy = _saveOnCopy.Checked;
-        _settings.FullScreenSavesFile = _fullSave.Checked;
         _settings.Save();
         try
         {

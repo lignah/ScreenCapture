@@ -60,9 +60,6 @@ internal sealed class OverlayForm : Form
     /// <summary>Raised with the raw (unannotated) selection and a screen point to place the result near.</summary>
     public event Action<Bitmap, Point>? OcrRequested;
 
-    /// <summary>When true, finishing a selection immediately runs OCR (tray "OCR capture").</summary>
-    public bool OcrMode { get; set; }
-
     /// <summary>Raised after a file was written.</summary>
     public event Action<string>? Saved;
 
@@ -477,10 +474,7 @@ internal sealed class OverlayForm : Form
                     _sel = WindowAt(p) ?? Rectangle.Empty;
                 }
                 if (_sel.Width >= 2 && _sel.Height >= 2)
-                {
                     _mode = Mode.Selected;
-                    if (OcrMode) BeginInvoke(new Action(Ocr));
-                }
                 else
                 {
                     _mode = Mode.Idle;

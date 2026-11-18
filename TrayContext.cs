@@ -11,7 +11,6 @@ internal sealed class TrayContext : ApplicationContext
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly NotifyIcon _tray;
     private readonly HotkeyWindow _hotkeyWindow = new();
-    private readonly ToolStripMenuItem _regionItem;
     private bool _hotkeyOk;
     private string _hotkeyText = HotkeyParser.Default;
     private OverlayForm? _overlay;
@@ -39,14 +38,6 @@ internal sealed class TrayContext : ApplicationContext
     public TrayContext(bool startCapture)
     {
         var menu = new ContextMenuStrip();
-        _regionItem = new ToolStripMenuItem("Region capture", null, (_, _) => RunLater(180, StartRegionCapture))
-        {
-            Font = new Font(menu.Font, FontStyle.Bold),
-        };
-        menu.Items.Add(_regionItem);
-        menu.Items.Add("OCR capture (extract text)", null, (_, _) => RunLater(180, () => StartRegionCapture(ocrMode: true)));
-        menu.Items.Add("Full screen capture", null, (_, _) => RunLater(250, FullScreenCapture));
-        menu.Items.Add(new ToolStripSeparator());
         var showWindow = new ToolStripMenuItem("결과 창 표시") { CheckOnClick = true };
         showWindow.CheckedChanged += (_, _) => { _settings.OcrShowWindow = showWindow.Checked; _settings.Save(); };
         var merge = new ToolStripMenuItem("문단으로 합치기") { CheckOnClick = true };
@@ -111,12 +102,10 @@ internal sealed class TrayContext : ApplicationContext
 
         if (_hotkeyOk)
         {
-            _regionItem.ShortcutKeyDisplayString = _hotkeyText;
             _tray.Text = Truncate($"Screen Capture {Program.AppVersion} ({_hotkeyText})");
         }
         else
         {
-            _regionItem.ShortcutKeyDisplayString = "hotkey unavailable";
             _tray.Text = Truncate($"Screen Capture {Program.AppVersion} (hotkey unavailable)");
             _tray.ShowBalloonTip(6000, "Screen Capture",
                 $"{_hotkeyText} is already used by another app. Choose another hotkey in Settings, or click the tray icon to capture.",
@@ -138,9 +127,7 @@ internal sealed class TrayContext : ApplicationContext
         t.Start();
     }
 
-    private void StartRegionCapture() => StartRegionCapture(ocrMode: false);
-
-    private void StartRegionCapture(bool ocrMode)
+    private void StartRegionCapture()
     {
         if (_overlay != null)
         {
@@ -151,7 +138,7 @@ internal sealed class TrayContext : ApplicationContext
         {
             var windows = ScreenGrabber.GetWindowRects();
             var bmp = ScreenGrabber.CaptureVirtualScreen(out var vb);
-            var overlay = new OverlayForm(bmp, vb, windows, _settings) { OcrMode = ocrMode };
+            var overlay = new OverlayForm(bmp, vb, windows, _settings);
             overlay.OcrRequested += (img, near) => _ = RunOcr(img, near);
             overlay.PinRequested += (img, loc) =>
             {
@@ -251,22 +238,6 @@ internal sealed class TrayContext : ApplicationContext
         _langDialog = new OcrLanguageDialog(add, _settings);
         _langDialog.FormClosed += (_, _) => _langDialog = null;
         _langDialog.Show();
-    }
-
-    private void FullScreenCapture()
-    {
-        try
-        {
-            using var bmp = ScreenGrabber.CaptureVirtualScreen(out _);
-            ImageOutput.CopyToClipboard(bmp);
-            if (_settings.FullScreenSavesFile)
-                _lastSavedPath = ImageOutput.SaveAuto(bmp, _settings.EffectiveFolder);
-            // Silent by design: no "copied/saved" notification; failures go to error.log only.
-        }
-        catch (Exception ex)
-        {
-            ErrorLog.Write(ex);
-        }
     }
 
     private void OnSaved(string path)
