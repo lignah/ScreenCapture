@@ -4,10 +4,12 @@ internal static class HotkeyParser
 {
     public const string Default = "Ctrl+Shift+A";
 
+    /// <summary>Choices in the Settings dropdown. F12 is left out: Windows reserves it for debuggers.</summary>
     public static readonly string[] Presets =
     {
-        "Ctrl+Shift+A", "Ctrl+Alt+A", "Ctrl+Shift+S", "Ctrl+Shift+X", "Alt+Shift+A", "Ctrl+Shift+F1", "PrintScreen",
-        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+        "Ctrl+Shift+A",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11",
+        "Ctrl+Alt+A", "Ctrl+Shift+S", "Ctrl+Shift+X", "Alt+Shift+A", "Ctrl+Shift+F1", "PrintScreen",
     };
 
     /// <summary>Canonical spelling, e.g. "ctrl+shift+a" -> "Ctrl+Shift+A", "f5" -> "F5". Unparsable text is returned trimmed.</summary>

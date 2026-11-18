@@ -72,6 +72,8 @@ internal static class Program
         if (i >= 0) return RunTest(args, i, overlay: false);
         i = Array.IndexOf(args, "--magnifier-selftest");
         if (i >= 0) return RunMagnifierTest(args, i);
+        i = Array.IndexOf(args, "--settings-selftest");
+        if (i >= 0) return RunSettingsPreview(args, i);
         i = Array.IndexOf(args, "--toolbar-selftest");
         if (i >= 0) return RunToolbarTest(args, i);
         i = Array.IndexOf(args, "--overlay-selftest");
@@ -346,6 +348,35 @@ internal static class Program
         }
         catch { }
         return 0;
+    }
+
+    /// <summary>--settings-selftest &lt;png&gt;: renders the Settings dialog off-screen with the hotkey list drawn open;
+    /// writes &lt;png&gt;.info.txt with the list items. Nothing is saved.</summary>
+    private static int RunSettingsPreview(string[] args, int index)
+    {
+        string path = Path.GetFullPath(args[index + 1]);
+        try
+        {
+            using var form = new SettingsForm(AppSettings.Load(), "Current hotkey status (preview)")
+            {
+                StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000), ShowInTaskbar = false,
+            };
+            form.Show();
+            Application.DoEvents();
+            using (var img = form.RenderPreview(out var info))
+            {
+                ImageOutput.Save(img, path);
+                File.WriteAllText(path + ".info.txt", info);
+            }
+            form.Close();
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+            File.WriteAllText(path + ".info.txt", "error: " + ex);
+            return 1;
+        }
     }
 
     /// <summary>--toolbar-selftest &lt;png&gt; [--thickness 0|1|2]: renders the capture toolbar on a plain background
