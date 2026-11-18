@@ -333,6 +333,26 @@ internal sealed class TrayContext : ApplicationContext
         finally { _settingsForm = null; }
     }
 
+    /// <summary>--fullscreen-hotkey-test: registers the saved hotkeys like the tray does, posts the full-screen
+    /// hotkey's WM_HOTKEY to the real hotkey window, and reports what the handler did. Run with the tray app closed.</summary>
+    internal static string FullscreenHotkeySelfTest()
+    {
+        var ctx = new TrayContext(startCapture: false);
+        try
+        {
+            ClipboardText.TrySet("fullscreen-hotkey-test");
+            Native.PostMessage(ctx._hotkeyWindow.Handle, Native.WM_HOTKEY, new IntPtr(FullHotkeyId), IntPtr.Zero);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 2500 && ctx._lastSavedPath == null) { Application.DoEvents(); Thread.Sleep(20); }
+            var img = Clipboard.ContainsImage() ? Clipboard.GetImage() : null;
+            return $"capture hotkey={ctx._hotkeyText} registered={ctx._hotkeyOk}{Environment.NewLine}" +
+                   $"fullscreen hotkey={(ctx._fullText.Length == 0 ? "None" : ctx._fullText)} registered={ctx._fullOk}{Environment.NewLine}" +
+                   $"clipboard image={(img == null ? "none" : $"{img.Width}x{img.Height}")}{Environment.NewLine}" +
+                   $"saved={ctx._lastSavedPath ?? "none"}{Environment.NewLine}";
+        }
+        finally { ctx.ExitApp(); }
+    }
+
     private void ExitApp()
     {
         if (_hotkeyOk) Native.UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);

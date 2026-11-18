@@ -72,6 +72,13 @@ internal static class Program
         if (i >= 0) return RunTest(args, i, overlay: false);
         i = Array.IndexOf(args, "--magnifier-selftest");
         if (i >= 0) return RunMagnifierTest(args, i);
+        i = Array.IndexOf(args, "--fullscreen-hotkey-test");
+        if (i >= 0)
+        {
+            string outPath = Path.GetFullPath(args[i + 1]);
+            try { File.WriteAllText(outPath, TrayContext.FullscreenHotkeySelfTest()); return 0; }
+            catch (Exception ex) { ErrorLog.Write(ex); File.WriteAllText(outPath, "error: " + ex); return 1; }
+        }
         i = Array.IndexOf(args, "--settings-selftest");
         if (i >= 0) return RunSettingsPreview(args, i);
         i = Array.IndexOf(args, "--toolbar-selftest");
