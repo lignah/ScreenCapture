@@ -578,9 +578,11 @@ internal sealed class OverlayForm : Form
             case Keys.Control | Keys.Z:
                 Undo();
                 return true;
-            case Keys.Control | Keys.T:
-                if (HasSel && _mode == Mode.Selected) Ocr();
-                return true;
+            case Keys.Z:
+                // Plain Z (no modifier) runs OCR; not while the text editor is open (handled above).
+                // Does not clash with C on the magnifier: the magnifier is hidden once a selection is made.
+                if (HasSel && _mode == Mode.Selected) { Ocr(); return true; }
+                break;
             case Keys.C:
                 // Plain C (no modifier) copies the color under the magnifier and closes; Ctrl+C above copies the image.
                 if (ShowMagnifier) { CopyColorUnderCursor(); return true; }
@@ -895,14 +897,68 @@ internal sealed class OverlayForm : Form
         PinRequested?.Invoke(bmp, loc);
     }
 
+    /// <summary>Test hook: how many times OCR was triggered. When <see cref="KeepOpenForTest"/> is set, the overlay stays open.</summary>
+    internal int OcrStarts { get; private set; }
+    internal bool KeepOpenForTest { get; set; }
+
     private void Ocr()
     {
         if (!HasSel || IsDisposed) return;
         CancelText();
+        OcrStarts++;
+        if (KeepOpenForTest) return;
         var bmp = _src.Clone(_sel, PixelFormat.Format32bppArgb);
         var near = new Point(_sel.X + _vb.X, _sel.Bottom + _vb.Y + 8);
         Close();
         OcrRequested?.Invoke(bmp, near);
+    }
+
+    /// <summary>--ocr-key-selftest: Z starts OCR, Ctrl+T does not, and typing z in the text tool inserts the letter.</summary>
+    internal string OcrKeySelfTest()
+    {
+        KeepOpenForTest = true;
+        var cr = ClientR;
+        _sel = new Rectangle(40, 40, Math.Min(200, cr.Width / 2), Math.Min(100, cr.Height / 2));
+        _mode = Mode.Selected;
+        var sb = new System.Text.StringBuilder();
+
+        int start = OcrStarts;
+        bool z = SimulateKey(Keys.Z);
+        sb.AppendLine($"Z with selection: handled={z} ocr={OcrStarts - start}");
+
+        start = OcrStarts;
+        bool ct = SimulateKey(Keys.Control | Keys.T);
+        sb.AppendLine($"Ctrl+T with selection: handled={ct} ocr={OcrStarts - start}");
+
+        BeginText(new Point(_sel.X + 20, _sel.Y + 20));
+        start = OcrStarts;
+        bool zEdit = SimulateKey(Keys.Z);
+        OnKeyPress(new KeyPressEventArgs('z'));
+        OnKeyPress(new KeyPressEventArgs('Z'));
+        string typed = _edit!.Text;
+        sb.AppendLine($"Z while typing: handled={zEdit} ocr={OcrStarts - start} text={typed}");
+        CancelText();
+
+        _mode = Mode.Idle;
+        _sel = Rectangle.Empty;
+        start = OcrStarts;
+        bool zIdle = SimulateKey(Keys.Z);
+        sb.AppendLine($"Z idle (no selection): handled={zIdle} ocr={OcrStarts - start}");
+
+        bool pass = z
+            && sb.ToString().Contains("Z with selection: handled=True ocr=1")
+            && sb.ToString().Contains("ocr=0")
+            && typed == "zZ"
+            && !zEdit
+            && (OcrStarts == 1);
+        // Ctrl+T / idle must not increment OcrStarts (already 1 from the first Z)
+        pass = z && !zEdit && !zIdle && typed == "zZ"
+            && sb.ToString().Contains("Z with selection: handled=True ocr=1")
+            && sb.ToString().Contains("Ctrl+T with selection:") && sb.ToString().Contains("ocr=0")
+            && sb.ToString().Contains("Z while typing: handled=False ocr=0 text=zZ")
+            && sb.ToString().Contains("Z idle (no selection): handled=False ocr=0");
+        sb.AppendLine(pass ? "PASS" : "FAIL");
+        return sb.ToString();
     }
 
     /// <summary>--text-selftest: types "Hello 한글 Wj" (Korean through the IME path), renders the editing state and the
@@ -1132,7 +1188,7 @@ internal sealed class OverlayForm : Form
         string[] thickNames = { "Thin", "Medium", "Thick" };
         for (int i = 0; i < Thickness.Length; i++) items.Add(($"th{i}", thickNames[i] + " (also text size / mosaic block)", true));
         items.Add(null);
-        items.Add(("ocr", "Extract text - OCR (Ctrl+T)", false));
+        items.Add(("ocr", "Extract text - OCR (Z)", false));
         items.Add(("pin", "Pin to screen", false));
         items.Add(("copy", "Copy to clipboard (Enter / double-click)", false));
 

@@ -79,6 +79,8 @@ internal static class Program
             try { File.WriteAllText(outPath, TrayContext.FullscreenHotkeySelfTest()); return 0; }
             catch (Exception ex) { ErrorLog.Write(ex); File.WriteAllText(outPath, "error: " + ex); return 1; }
         }
+        i = Array.IndexOf(args, "--ocr-key-selftest");
+        if (i >= 0) return RunOcrKeyTest(args, i);
         i = Array.IndexOf(args, "--text-selftest");
         if (i >= 0) return RunTextTest(args, i);
         i = Array.IndexOf(args, "--settings-selftest");
@@ -384,6 +386,33 @@ internal static class Program
         {
             ErrorLog.Write(ex);
             File.WriteAllText(path + ".info.txt", "error: " + ex);
+            return 1;
+        }
+    }
+
+    /// <summary>--ocr-key-selftest [file]: Z starts OCR, Ctrl+T does not, typing z in the text tool inserts the letter.</summary>
+    private static int RunOcrKeyTest(string[] args, int index)
+    {
+        string path = index + 1 < args.Length
+            ? Path.GetFullPath(args[index + 1])
+            : Path.Combine(Path.GetTempPath(), "screencapture-ocr-key-test.txt");
+        try
+        {
+            var vb = SystemInformation.VirtualScreen;
+            var bmp = new Bitmap(Math.Max(vb.Width, 800), Math.Max(vb.Height, 400), System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp)) g.Clear(Color.Gray);
+            var settings = AppSettings.Load();
+            using var form = new OverlayForm(bmp, new Rectangle(vb.Location, bmp.Size), new List<Rectangle>(), settings);
+            string info = form.OcrKeySelfTest();
+            File.WriteAllText(path, info);
+            Console.Write(info);
+            return info.Contains("PASS") && !info.Contains("FAIL") ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            ErrorLog.Write(ex);
+            File.WriteAllText(path, "error: " + ex);
+            Console.WriteLine("error: " + ex);
             return 1;
         }
     }
